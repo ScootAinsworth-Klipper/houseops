@@ -66,6 +66,7 @@ export class HouseOpsDatabase {
     try { this.db.exec("ALTER TABLE tickets ADD COLUMN days_of_week TEXT"); } catch (_) {}
     try { this.db.exec("ALTER TABLE tickets ADD COLUMN assignee TEXT NOT NULL DEFAULT 'Dad'"); } catch (_) {}
     try { this.db.exec("ALTER TABLE tickets ADD COLUMN broadcast TEXT"); } catch (_) {}
+    try { this.db.exec("UPDATE tickets SET assignee = 'Camden' WHERE assignee = 'Son'"); } catch (_) {}
   }
 
   saveTicket(ticket: HouseTicket): void {

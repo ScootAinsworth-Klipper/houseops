@@ -57,8 +57,7 @@ function renderTicketCard(t) {
   if (assignee === "Sawyer") {
     assigneeBadge = `<span class="badge" style="background:#3b0764; color:#f5d0fe; border:1px solid #a855f7;">👧 Sawyer</span>`;
   } else if (assignee === "Camden" || assignee === "Son") {
-    const label = assignee === "Son" ? "👦 Son" : "👦 Camden";
-    assigneeBadge = `<span class="badge" style="background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca;">${label}</span>`;
+    assigneeBadge = `<span class="badge" style="background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca;">👦 Camden</span>`;
   } else if (assignee === "Dad") {
     assigneeBadge = `<span class="badge" style="background:#064e3b; color:#6ee7b7; border:1px solid #059669;">👨 Dad</span>`;
   } else if (assignee === "Family") {
@@ -293,7 +292,7 @@ function openNewTicketModal() {
   document.getElementById("btnDeleteTicket").style.display = "none";
   document.getElementById("inpTitle").value = "";
   document.getElementById("inpCategory").value = "General";
-  document.getElementById("inpAssignee").value = "Sawyer";
+  document.getElementById("inpAssignee").value = "Camden";
   document.getElementById("inpPriority").value = "P2-Normal";
   document.getElementById("inpTime").value = "06:15";
   document.getElementById("inpRecurrence").value = "Weekdays";

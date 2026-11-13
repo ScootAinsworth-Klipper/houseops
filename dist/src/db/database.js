@@ -73,6 +73,10 @@ export class HouseOpsDatabase {
             this.db.exec("ALTER TABLE tickets ADD COLUMN broadcast TEXT");
         }
         catch (_) { }
+        try {
+            this.db.exec("UPDATE tickets SET assignee = 'Camden' WHERE assignee = 'Son'");
+        }
+        catch (_) { }
     }
     saveTicket(ticket) {
         const stmt = this.db.prepare(`
