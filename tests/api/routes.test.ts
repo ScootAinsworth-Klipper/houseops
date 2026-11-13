@@ -72,4 +72,55 @@ describe("HouseOps REST API & Verification Endpoints", () => {
     expect(audits.length).toBe(1);
     expect(audits[0].ticketId).toBe("TICK-TEST-1");
   });
+
+  it("creates and triggers On-Demand task via voice/webhook endpoint", async () => {
+    // 1. Create an on-demand task
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/tickets",
+      payload: {
+        id: "TICK-DOGS-ONDEMAND",
+        title: "Take Dogs Out",
+        category: "General",
+        assignee: "Son",
+        priority: "P2-Normal",
+        recurrence: { type: "OnDemand", baseOnCompletion: true },
+        preferredWindow: { startHour: 0, startMinute: 0, durationMinutes: 60 },
+        broadcast: {
+          speakers: ["All Rooms"],
+          customMessage: "Attention Camden: Time to take the dogs out!"
+        },
+        nextScheduledAt: new Date().toISOString()
+      }
+    });
+    expect(createRes.statusCode).toBe(201);
+
+    // 2. Trigger task via /api/trigger/:query (case-insensitive substring match)
+    const triggerRes = await app.inject({
+      method: "POST",
+      url: "/api/trigger/take%20dogs"
+    });
+    expect(triggerRes.statusCode).toBe(200);
+    const trigData = JSON.parse(triggerRes.body);
+    expect(trigData.ticket.id).toBe("TICK-DOGS-ONDEMAND");
+    expect(trigData.message).toBe("Attention Camden: Time to take the dogs out!");
+    expect(trigData.speakers).toContain("All Rooms");
+
+    // 3. Complete the on-demand task
+    const compRes = await app.inject({
+      method: "POST",
+      url: "/api/tickets/TICK-DOGS-ONDEMAND/complete",
+      payload: { method: "Quick_Complete" }
+    });
+    expect(compRes.statusCode).toBe(200);
+
+    // 4. Trigger via GET (for simple webhooks / Google Home URLs)
+    const getTrigRes = await app.inject({
+      method: "GET",
+      url: "/api/trigger/dogs"
+    });
+    expect(getTrigRes.statusCode).toBe(200);
+    const getTrigData = JSON.parse(getTrigRes.body);
+    expect(getTrigData.ticket.currentStatus).toBe("Pending");
+  });
 });

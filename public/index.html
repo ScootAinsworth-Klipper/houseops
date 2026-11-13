@@ -105,17 +105,18 @@
           </select>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" id="grpTargetTime">
           <label>Target Time</label>
           <input type="time" class="form-input" id="inpTime" value="06:15" style="color-scheme: dark;">
         </div>
       </div>
 
       <div class="form-group">
-        <label>Recurrence</label>
+        <label>Recurrence / Schedule</label>
         <select class="form-input" id="inpRecurrence" onchange="toggleRecurrenceOptions(this.value)">
           <option value="Weekdays">Weekdays (Mon - Fri)</option>
           <option value="Daily">Daily (Every Day)</option>
+          <option value="OnDemand">⚡ On-Demand (No fixed time - Trigger whenever needed)</option>
           <option value="Weekends">Weekends Only (Sat - Sun)</option>
           <option value="DaysOfWeek">Custom Days of Week</option>
           <option value="Weekly">Weekly (Every 7 days)</option>
@@ -148,13 +149,17 @@
           <span style="font-size:13px; font-weight:700; color:var(--accent);">📢 Spoken Voice Reminders</span>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" id="grpBroadcastTiming">
           <label>Broadcast Reminders (Select All That Apply)</label>
           <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:2px;" id="timingChips">
             <button type="button" class="speaker-chip active" data-stage="exact" onclick="toggleStageChip(this)">At Scheduled Time</button>
             <button type="button" class="speaker-chip" data-stage="15m_before" onclick="toggleStageChip(this)">15m Before</button>
             <button type="button" class="speaker-chip active" data-stage="overdue" onclick="toggleStageChip(this)">Overdue Nudge (15m After)</button>
           </div>
+        </div>
+
+        <div id="onDemandBroadcastHint" style="display:none; font-size:12px; color:var(--accent); background:rgba(245, 158, 11, 0.1); border:1px solid rgba(245, 158, 11, 0.3); padding:8px 10px; border-radius:8px;">
+          ⚡ On-demand tasks broadcast instantly whenever triggered in the app or via Google Assistant.
         </div>
 
         <div class="form-group">

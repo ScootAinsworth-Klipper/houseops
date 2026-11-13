@@ -3,8 +3,22 @@ import { isQuietHours, broadcastAnnouncement } from "../daemon/announcer_client.
 export async function runDaemonCycle(db, options = {}) {
     const now = options.now || new Date();
     const announcer = options.announcerFn || broadcastAnnouncement;
-    // 1. Evaluate & float slipped tickets
     const tickets = db.getTickets();
+    // 0. Auto-reactivate recurring tickets whose next window has arrived
+    for (const ticket of tickets) {
+        if (ticket.currentStatus === "Verified" && ticket.recurrence.type !== "OnDemand") {
+            const schedTime = new Date(ticket.nextScheduledAt).getTime();
+            if (now.getTime() >= schedTime - 30 * 60 * 1000) {
+                ticket.currentStatus = "Pending";
+                if (ticket.broadcast) {
+                    delete ticket.broadcast.lastAnnouncedStage;
+                    delete ticket.broadcast.lastAnnouncedAt;
+                }
+                db.saveTicket(ticket);
+            }
+        }
+    }
+    // 1. Evaluate & float slipped tickets
     const floatingResult = evaluateFloatingTickets(tickets, now);
     for (const updated of floatingResult.updated) {
         db.saveTicket(updated);
@@ -14,7 +28,7 @@ export async function runDaemonCycle(db, options = {}) {
     let announcedCount = 0;
     if (!isQuietHours(now)) {
         for (const ticket of tickets) {
-            if (ticket.currentStatus !== "Pending")
+            if (ticket.currentStatus !== "Pending" || ticket.recurrence.type === "OnDemand")
                 continue;
             const schedTime = new Date(ticket.nextScheduledAt).getTime();
             const diffMinutes = Math.round((schedTime - now.getTime()) / (60 * 1000));

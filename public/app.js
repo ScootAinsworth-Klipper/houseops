@@ -25,8 +25,8 @@ async function loadAuditLog() {
 }
 
 function updateCounts() {
-  const active = tickets.filter(t => t.currentStatus !== "Verified" && !t.isFloated).length;
-  const floated = tickets.filter(t => t.currentStatus !== "Verified" && t.isFloated).length;
+  const active = tickets.filter(t => t.recurrence.type === "OnDemand" || (t.currentStatus !== "Verified" && !t.isFloated)).length;
+  const floated = tickets.filter(t => t.recurrence.type !== "OnDemand" && t.currentStatus !== "Verified" && t.isFloated).length;
   document.getElementById("countActive").innerText = active;
   document.getElementById("countFloated").innerText = floated;
 }
@@ -35,8 +35,8 @@ function renderTickets() {
   const activeGrid = document.getElementById("viewActive");
   const floatedGrid = document.getElementById("viewFloated");
 
-  const activeTickets = tickets.filter(t => t.currentStatus !== "Verified" && !t.isFloated);
-  const floatedTickets = tickets.filter(t => t.currentStatus !== "Verified" && t.isFloated);
+  const activeTickets = tickets.filter(t => t.recurrence.type === "OnDemand" || (t.currentStatus !== "Verified" && !t.isFloated));
+  const floatedTickets = tickets.filter(t => t.recurrence.type !== "OnDemand" && t.currentStatus !== "Verified" && t.isFloated);
 
   activeGrid.innerHTML = activeTickets.length
     ? activeTickets.map(renderTicketCard).join("")
@@ -55,8 +55,10 @@ function renderTicketCard(t) {
   const assignee = t.assignee || "Dad";
   const assigneeBadge = `<span class="badge" style="background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca;">👤 ${escapeHtml(assignee)}</span>`;
 
+  const isOnDemand = t.recurrence.type === "OnDemand";
   let recLabel = t.recurrence.type;
-  if (t.recurrence.type === "Weekdays") recLabel = "Mon - Fri";
+  if (isOnDemand) recLabel = "⚡ On-Demand";
+  else if (t.recurrence.type === "Weekdays") recLabel = "Mon - Fri";
   else if (t.recurrence.type === "Weekends") recLabel = "Sat - Sun";
   else if (t.recurrence.type === "DaysOfWeek" && t.recurrence.daysOfWeek) {
     const dayNames = ["Su", "M", "Tu", "W", "Th", "F", "Sa"];
@@ -66,6 +68,16 @@ function renderTicketCard(t) {
   const schedDate = new Date(t.nextScheduledAt);
   const timeStr = schedDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const dateStr = schedDate.toLocaleDateString([], { weekday: "short", month: "numeric", day: "numeric" });
+
+  let schedDisplay;
+  if (isOnDemand) {
+    const lastDoneStr = t.lastCompletedAt
+      ? ` • Last completed: ${new Date(t.lastCompletedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+      : "";
+    schedDisplay = `<span>⚡</span> Ready on demand • Tap Broadcast to alert house${lastDoneStr}`;
+  } else {
+    schedDisplay = `<span>🕒</span> Window: ${dateStr} at ${timeStr} (${t.preferredWindow.durationMinutes}m)`;
+  }
 
   return `
     <div class="ticket-card ${t.isFloated ? "floated" : ""} ${isP1 ? "p1" : ""}" id="card-${t.id}">
@@ -80,18 +92,29 @@ function renderTicketCard(t) {
         <span class="badge badge-general">${recLabel}</span>
       </div>
       <div class="ticket-schedule">
-        <span>🕒</span> Window: ${dateStr} at ${timeStr} (${t.preferredWindow.durationMinutes}m)
+        ${schedDisplay}
       </div>
       <div class="card-actions">
-        <button class="btn btn-verify" onclick="triggerCameraCapture('${t.id}')">
-          📸 Verify
-        </button>
-        <button class="btn btn-done" onclick="quickCompleteTicket('${t.id}')">
-          ✓ Done
-        </button>
-        <button class="btn btn-nudge" onclick="nudgeTicket('${t.id}', this)" title="Broadcast voice reminder right now">
-          📢 Nudge
-        </button>
+        ${isOnDemand
+          ? `<button class="btn btn-nudge" onclick="nudgeTicket('${t.id}', this)" title="Broadcast voice reminder right now">
+               📢 Broadcast Now
+             </button>
+             <button class="btn btn-done" onclick="quickCompleteTicket('${t.id}')">
+               ✓ Done
+             </button>
+             <button class="btn btn-verify" onclick="triggerCameraCapture('${t.id}')">
+               📸 Proof
+             </button>`
+          : `<button class="btn btn-verify" onclick="triggerCameraCapture('${t.id}')">
+               📸 Verify
+             </button>
+             <button class="btn btn-done" onclick="quickCompleteTicket('${t.id}')">
+               ✓ Done
+             </button>
+             <button class="btn btn-nudge" onclick="nudgeTicket('${t.id}', this)" title="Broadcast voice reminder right now">
+               📢 Nudge
+             </button>`
+        }
         <button class="btn" onclick="openEditTicketModal('${t.id}')" style="flex:0; padding:8px 10px; background:var(--bg-card-alt); border-color:var(--border);" title="Edit Task">
           ✏️
         </button>
@@ -180,18 +203,20 @@ async function quickCompleteTicket(ticketId) {
   }
 }
 
-// 1-Tap Instant Voice Nudge
+// 1-Tap Instant Voice Nudge / Broadcast
 async function nudgeTicket(ticketId, btn) {
   const original = btn ? btn.innerText : "";
+  const isBroadcast = original.includes("Broadcast");
   if (btn) {
     btn.disabled = true;
-    btn.innerText = "⏳ Calling...";
+    btn.innerText = isBroadcast ? "⏳ Speaking..." : "⏳ Calling...";
   }
 
   try {
     const res = await fetch(`/api/tickets/${ticketId}/nudge`, { method: "POST" });
     const data = await res.json();
-    if (btn) btn.innerText = data.success ? "✅ Nudged!" : "❌ Error";
+    if (btn) btn.innerText = data.success ? (isBroadcast ? "✅ Broadcasted!" : "✅ Nudged!") : "❌ Error";
+    await loadTickets();
   } catch (e) {
     if (btn) btn.innerText = "❌ Failed";
   }
@@ -340,8 +365,21 @@ function toggleStageChip(el) {
 }
 
 function toggleRecurrenceOptions(val) {
-  document.getElementById("grpIntervalDays").style.display = val === "IntervalDays" ? "flex" : "none";
-  document.getElementById("grpDaysOfWeek").style.display = val === "DaysOfWeek" ? "flex" : "none";
+  const isInterval = val === "IntervalDays";
+  const isDaysOfWeek = val === "DaysOfWeek";
+  const isOnDemand = val === "OnDemand";
+
+  document.getElementById("grpIntervalDays").style.display = isInterval ? "flex" : "none";
+  document.getElementById("grpDaysOfWeek").style.display = isDaysOfWeek ? "flex" : "none";
+
+  const grpTime = document.getElementById("grpTargetTime");
+  if (grpTime) grpTime.style.display = isOnDemand ? "none" : "flex";
+
+  const grpTiming = document.getElementById("grpBroadcastTiming");
+  if (grpTiming) grpTiming.style.display = isOnDemand ? "none" : "flex";
+
+  const hint = document.getElementById("onDemandBroadcastHint");
+  if (hint) hint.style.display = isOnDemand ? "block" : "none";
 }
 
 function toggleDayChip(el) {
@@ -392,25 +430,28 @@ async function submitNewTicket() {
   // Calculate first scheduled date
   const now = new Date();
   let nextSched = new Date(now);
-  const isPastTimeToday = now.getHours() > startHour || (now.getHours() === startHour && now.getMinutes() >= startMinute);
 
-  if (isPastTimeToday) {
-    nextSched.setDate(nextSched.getDate() + 1);
-  }
+  if (recType !== "OnDemand") {
+    const isPastTimeToday = now.getHours() > startHour || (now.getHours() === startHour && now.getMinutes() >= startMinute);
 
-  let allowedDays = null;
-  if (recType === "Weekdays") allowedDays = [1, 2, 3, 4, 5];
-  else if (recType === "Weekends") allowedDays = [0, 6];
-  else if (recType === "DaysOfWeek") allowedDays = daysOfWeek;
-
-  if (allowedDays) {
-    for (let i = 0; i < 7; i++) {
-      if (allowedDays.includes(nextSched.getDay())) break;
+    if (isPastTimeToday) {
       nextSched.setDate(nextSched.getDate() + 1);
     }
-  }
 
-  nextSched.setHours(startHour, startMinute, 0, 0);
+    let allowedDays = null;
+    if (recType === "Weekdays") allowedDays = [1, 2, 3, 4, 5];
+    else if (recType === "Weekends") allowedDays = [0, 6];
+    else if (recType === "DaysOfWeek") allowedDays = daysOfWeek;
+
+    if (allowedDays) {
+      for (let i = 0; i < 7; i++) {
+        if (allowedDays.includes(nextSched.getDay())) break;
+        nextSched.setDate(nextSched.getDate() + 1);
+      }
+    }
+
+    nextSched.setHours(startHour, startMinute, 0, 0);
+  }
 
   const activeStages = Array.from(document.querySelectorAll("#timingChips .speaker-chip.active"))
     .map(c => c.dataset.stage);
@@ -420,7 +461,9 @@ async function submitNewTicket() {
     ? activeSpeakerChips.map(c => c.dataset.speaker)
     : ["All Rooms"];
 
-  const broadcast = activeStages.length > 0 ? { stages: activeStages, speakers, customMessage } : undefined;
+  const broadcast = (activeStages.length > 0 || recType === "OnDemand")
+    ? { stages: activeStages, speakers, customMessage }
+    : undefined;
 
   const payload = {
     id: editId,
@@ -435,7 +478,11 @@ async function submitNewTicket() {
       daysOfWeek: recType === "DaysOfWeek" ? daysOfWeek : undefined,
       baseOnCompletion: true
     },
-    preferredWindow: { startHour, startMinute, durationMinutes: 45 },
+    preferredWindow: {
+      startHour: recType === "OnDemand" ? 0 : startHour,
+      startMinute: recType === "OnDemand" ? 0 : startMinute,
+      durationMinutes: 45
+    },
     nextScheduledAt: nextSched.toISOString()
   };
 

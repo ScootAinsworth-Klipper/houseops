@@ -50,17 +50,46 @@ export function registerRoutes(app, db, photoDir) {
         const speakers = ticket.broadcast?.speakers && ticket.broadcast.speakers.length > 0
             ? ticket.broadcast.speakers
             : ["All Rooms"];
+        // Reactivate on-demand task to Pending so it shows active
+        if (ticket.recurrence.type === "OnDemand") {
+            ticket.currentStatus = "Pending";
+            ticket.nextScheduledAt = new Date().toISOString();
+            db.saveTicket(ticket);
+        }
         const ok = await broadcastAnnouncement(message, speakers);
         return reply.send({ success: ok, message, speakers });
     });
+    // Voice Assistant / Webhook Quick Trigger (GET or POST)
+    const triggerHandler = async (req, reply) => {
+        const q = req.params.query.toLowerCase().trim();
+        const tickets = db.getTickets();
+        const ticket = tickets.find(t => t.id.toLowerCase() === q || t.title.toLowerCase().includes(q));
+        if (!ticket) {
+            return reply.status(404).send({ error: `No task found matching '${req.params.query}'` });
+        }
+        const person = ticket.assignee === "Family" ? "the house" : (ticket.assignee || "the house");
+        const message = ticket.broadcast?.customMessage ||
+            `Attention ${person}: Dad needs ${ticket.title} done right now.`;
+        const speakers = ticket.broadcast?.speakers && ticket.broadcast.speakers.length > 0
+            ? ticket.broadcast.speakers
+            : ["All Rooms"];
+        // Set ticket to Pending so it appears active
+        ticket.currentStatus = "Pending";
+        ticket.nextScheduledAt = new Date().toISOString();
+        db.saveTicket(ticket);
+        const ok = await broadcastAnnouncement(message, speakers);
+        return reply.send({ success: ok, ticket, message, speakers });
+    };
+    app.post("/api/trigger/:query", triggerHandler);
+    app.get("/api/trigger/:query", triggerHandler);
     // Complete a ticket (Quick Complete or Voice)
     app.post("/api/tickets/:id/complete", async (req, reply) => {
         const { id } = req.params;
         const ticket = db.getTicket(id);
         if (!ticket)
             return reply.status(404).send({ error: "Ticket not found" });
-        // Idempotency guard: if already verified, return without double-counting
-        if (ticket.currentStatus === "Verified") {
+        // Idempotency guard: if already verified, return without double-counting (except for OnDemand tasks)
+        if (ticket.currentStatus === "Verified" && ticket.recurrence.type !== "OnDemand") {
             return reply.send({ success: true, ticket, alreadyCompleted: true });
         }
         const completedAt = new Date().toISOString();
@@ -92,8 +121,8 @@ export function registerRoutes(app, db, photoDir) {
         const ticket = db.getTicket(id);
         if (!ticket)
             return reply.status(404).send({ error: "Ticket not found" });
-        // Idempotency guard
-        if (ticket.currentStatus === "Verified") {
+        // Idempotency guard (except for OnDemand tasks)
+        if (ticket.currentStatus === "Verified" && ticket.recurrence.type !== "OnDemand") {
             return reply.send({ success: true, ticket, alreadyCompleted: true });
         }
         const data = await req.file();

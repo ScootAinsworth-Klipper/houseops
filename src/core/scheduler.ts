@@ -61,6 +61,8 @@ export function calculateNextOccurrence(ticket: HouseTicket, referenceDate: Date
       const days = ticket.recurrence.intervalDays || 1;
       next.setUTCDate(next.getUTCDate() + days);
       break;
+    case "OnDemand":
+      return new Date(referenceDate);
   }
 
   // Anchor to preferred window hour & minute (in UTC)
@@ -88,7 +90,7 @@ export function evaluateFloatingTickets(
   const floated: string[] = [];
 
   for (const ticket of tickets) {
-    if (ticket.currentStatus !== "Pending") continue;
+    if (ticket.currentStatus !== "Pending" || ticket.recurrence.type === "OnDemand") continue;
 
     const scheduledTime = new Date(ticket.nextScheduledAt);
     const windowEndTime = new Date(scheduledTime.getTime() + ticket.preferredWindow.durationMinutes * 60 * 1000);

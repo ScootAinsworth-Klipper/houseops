@@ -15,7 +15,8 @@ export type RecurrenceType =
   | "DaysOfWeek"
   | "Weekly"
   | "Monthly"
-  | "IntervalDays";
+  | "IntervalDays"
+  | "OnDemand";
 
 export interface RecurrenceConfig {
   type: RecurrenceType;

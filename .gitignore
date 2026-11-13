@@ -3,5 +3,5 @@ node_modules/
 .env
 *.log
 photos/
-data/*.db
+data/
 android/build/

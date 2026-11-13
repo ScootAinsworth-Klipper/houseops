@@ -97,4 +97,28 @@ describe("HouseOps Scheduler", () => {
     expect(next.getUTCHours()).toBe(6);
     expect(next.getUTCMinutes()).toBe(15);
   });
+
+  it("handles OnDemand tasks correctly without advancing days or auto-floating", () => {
+    const onDemandTicket: HouseTicket = {
+      id: "TICK-ONDEMAND-DOGS",
+      title: "Take Dogs Out",
+      category: "General",
+      priority: "P2-Normal",
+      assignee: "Son",
+      recurrence: { type: "OnDemand", baseOnCompletion: true },
+      preferredWindow: { startHour: 0, startMinute: 0, durationMinutes: 60 },
+      currentStatus: "Pending",
+      nextScheduledAt: "2026-11-13T12:00:00.000Z"
+    };
+
+    const completed = new Date("2026-11-13T14:30:00.000Z");
+    const next = calculateNextOccurrence(onDemandTicket, completed);
+    expect(next.toISOString()).toBe(completed.toISOString());
+
+    // Should never auto-float
+    const now = new Date("2026-11-13T23:59:00.000Z");
+    const result = evaluateFloatingTickets([onDemandTicket], now);
+    expect(result.floated).toHaveLength(0);
+    expect(result.updated).toHaveLength(0);
+  });
 });
