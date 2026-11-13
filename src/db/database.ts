@@ -39,8 +39,18 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS sync_queue (
+  id TEXT PRIMARY KEY,
+  action TEXT NOT NULL,
+  ticket_id TEXT NOT NULL,
+  payload TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(current_status);
 CREATE INDEX IF NOT EXISTS idx_completion_ticket_id ON completion_records(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_sync_queue_created ON sync_queue(created_at);
 `;
 
 export class HouseOpsDatabase {
@@ -125,6 +135,36 @@ export class HouseOpsDatabase {
       record.notes || null,
       record.actor || "Father"
     );
+  }
+
+  completeTicketTransaction(ticket: HouseTicket, record: CompletionRecord): void {
+    const completeTx = this.db.transaction(() => {
+      this.recordCompletion(record);
+      this.saveTicket(ticket);
+    });
+    completeTx();
+  }
+
+  queueSync(action: string, ticketId: string, payload: any): void {
+    this.db.prepare(`
+      INSERT INTO sync_queue (id, action, ticket_id, payload, created_at)
+      VALUES (?, ?, ?, ?, datetime('now'))
+    `).run(`SYNC-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, action, ticketId, JSON.stringify(payload));
+  }
+
+  getPendingSyncs(): Array<{ id: string; action: string; ticket_id: string; payload: any; attempts: number }> {
+    const rows = this.db.prepare("SELECT * FROM sync_queue ORDER BY created_at ASC").all() as any[];
+    return rows.map(r => ({
+      id: r.id,
+      action: r.action,
+      ticket_id: r.ticket_id,
+      payload: r.payload ? JSON.parse(r.payload) : null,
+      attempts: r.attempts
+    }));
+  }
+
+  removeSync(id: string): void {
+    this.db.prepare("DELETE FROM sync_queue WHERE id = ?").run(id);
   }
 
   getAuditLog(ticketId?: string): CompletionRecord[] {

@@ -49,8 +49,23 @@ describe("HouseOps REST API & Verification Endpoints", () => {
     expect(completeRes.statusCode).toBe(200);
     const compBody = JSON.parse(completeRes.body);
     expect(compBody.ticket.currentStatus).toBe("Verified");
+    const firstNextSchedule = compBody.ticket.nextScheduledAt;
 
-    // 4. Check audit log
+    // Concurrent/duplicate completion attempt must be idempotent
+    const duplicateCompleteRes = await app.inject({
+      method: "POST",
+      url: "/api/tickets/TICK-TEST-1/complete",
+      payload: {
+        method: "Quick_Complete",
+        notes: "Accidental second click"
+      }
+    });
+    expect(duplicateCompleteRes.statusCode).toBe(200);
+    const dupBody = JSON.parse(duplicateCompleteRes.body);
+    expect(dupBody.alreadyCompleted).toBe(true);
+    expect(dupBody.ticket.nextScheduledAt).toBe(firstNextSchedule);
+
+    // 4. Check audit log (must only have 1 entry)
     const auditRes = await app.inject({ method: "GET", url: "/api/audit" });
     expect(auditRes.statusCode).toBe(200);
     const audits = JSON.parse(auditRes.body);

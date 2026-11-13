@@ -6,12 +6,14 @@ import path from "path";
 import fs from "fs";
 import { initDatabase, HouseOpsDatabase } from "./db/database.js";
 import { registerRoutes } from "./api/routes.js";
+import { startDaemon } from "./daemon.js";
 
 export interface ServerOptions {
   dbPath?: string;
   photoDir?: string;
   staticDir?: string;
   port?: number;
+  enableDaemon?: boolean;
 }
 
 export async function buildServer(options: ServerOptions = {}): Promise<FastifyInstance> {
@@ -21,9 +23,12 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } }); // 25MB max
 
   const dbPath = options.dbPath || path.resolve(process.cwd(), "data/houseops.db");
-  const photoDir = path.resolve(process.cwd(), options.photoDir || "photos");
+  const photoDir = path.resolve(process.cwd(), options.photoDir || process.env.PHOTO_DIR || "photos");
   const staticDir = path.resolve(process.cwd(), options.staticDir || "public");
 
+  if (dbPath !== ":memory:") {
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  }
   fs.mkdirSync(photoDir, { recursive: true });
   fs.mkdirSync(staticDir, { recursive: true });
 
@@ -43,6 +48,10 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   });
 
   registerRoutes(app, db, photoDir);
+
+  if (options.enableDaemon) {
+    startDaemon(db);
+  }
 
   return app;
 }

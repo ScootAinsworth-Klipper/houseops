@@ -62,13 +62,29 @@ export async function broadcastAnnouncement(
   }
 
   return new Promise((resolve) => {
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve(false);
+      }
+    }, 15000);
+
+    const finish = (code: number | null) => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        resolve(code === 0);
+      }
+    };
+
     const proc = spawn("python3", args, { stdio: "inherit" });
     proc.on("error", () => {
       // Fallback for Windows or systems where python3 is python
       const winProc = spawn("python", args, { stdio: "inherit" });
-      winProc.on("close", (code) => resolve(code === 0));
-      winProc.on("error", () => resolve(false));
+      winProc.on("close", (code) => finish(code));
+      winProc.on("error", () => finish(1));
     });
-    proc.on("close", (code) => resolve(code === 0));
+    proc.on("close", (code) => finish(code));
   });
 }

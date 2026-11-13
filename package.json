@@ -2,11 +2,11 @@
   "name": "houseops",
   "version": "1.0.0",
   "description": "Household Operations & Ticketing Engine",
-  "main": "dist/server.js",
+  "main": "dist/src/server.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "test": "vitest run"
   },
   "keywords": [

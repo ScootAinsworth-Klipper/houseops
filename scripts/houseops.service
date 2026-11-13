@@ -6,11 +6,12 @@ After=network.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/HouseOps
-ExecStart=/usr/bin/node dist/server.js
+ExecStart=/usr/bin/node dist/src/server.js
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
 Environment=PORT=8088
+Environment=PHOTO_DIR=/var/houseops/photos
 
 [Install]
 WantedBy=multi-user.target

@@ -34,7 +34,8 @@ export function calculateNextOccurrence(ticket: HouseTicket, referenceDate: Date
  */
 export function evaluateFloatingTickets(
   tickets: HouseTicket[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  useUtc: boolean = true
 ): { updated: HouseTicket[]; floated: string[] } {
   const updated: HouseTicket[] = [];
   const floated: string[] = [];
@@ -48,11 +49,22 @@ export function evaluateFloatingTickets(
     // If window has passed
     if (now.getTime() > windowEndTime.getTime()) {
       const nextWindow = new Date(now);
+      const currentHour = useUtc ? now.getUTCHours() : now.getHours();
+
       // If current time is already past preferred hour today, float to tomorrow; otherwise today
-      if (now.getUTCHours() >= ticket.preferredWindow.startHour) {
-        nextWindow.setUTCDate(nextWindow.getUTCDate() + 1);
+      if (currentHour >= ticket.preferredWindow.startHour) {
+        if (useUtc) {
+          nextWindow.setUTCDate(nextWindow.getUTCDate() + 1);
+        } else {
+          nextWindow.setDate(nextWindow.getDate() + 1);
+        }
       }
-      nextWindow.setUTCHours(ticket.preferredWindow.startHour, 0, 0, 0);
+
+      if (useUtc) {
+        nextWindow.setUTCHours(ticket.preferredWindow.startHour, 0, 0, 0);
+      } else {
+        nextWindow.setHours(ticket.preferredWindow.startHour, 0, 0, 0);
+      }
 
       const modifiedTicket: HouseTicket = {
         ...ticket,

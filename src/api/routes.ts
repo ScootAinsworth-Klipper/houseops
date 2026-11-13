@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { HouseOpsDatabase } from "../db/database.js";
 import { calculateNextOccurrence, evaluateFloatingTickets } from "../core/scheduler.js";
 import { HouseTicket, CompletionRecord, CompletionMethod } from "../core/types.js";
@@ -53,12 +54,17 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
       const ticket = db.getTicket(id);
       if (!ticket) return reply.status(404).send({ error: "Ticket not found" });
 
+      // Idempotency guard: if already verified, return without double-counting
+      if (ticket.currentStatus === "Verified") {
+        return reply.send({ success: true, ticket, alreadyCompleted: true });
+      }
+
       const completedAt = new Date().toISOString();
       const method = req.body?.method || "Quick_Complete";
 
-      // 1. Record completion audit
+      // 1. Prepare completion audit with UUID
       const audit: CompletionRecord = {
-        id: `AUDIT-${Date.now()}`,
+        id: `AUDIT-${crypto.randomUUID()}`,
         ticketId: ticket.id,
         completedAt,
         method,
@@ -66,17 +72,18 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
         notes: req.body?.notes,
         actor: "Father"
       };
-      db.recordCompletion(audit);
 
       // 2. Calculate next occurrence
       const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
 
-      // 3. Update ticket state
+      // 3. Update ticket state atomically
       ticket.currentStatus = "Verified";
       ticket.lastCompletedAt = completedAt;
       ticket.nextScheduledAt = nextDate.toISOString();
       ticket.isFloated = false;
-      db.saveTicket(ticket);
+
+      db.completeTicketTransaction(ticket, audit);
+      db.queueSync("complete_ticket", ticket.id, { method, completedAt });
 
       return reply.send({ success: true, ticket, audit });
     }
@@ -87,6 +94,11 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
     const { id } = req.params;
     const ticket = db.getTicket(id);
     if (!ticket) return reply.status(404).send({ error: "Ticket not found" });
+
+    // Idempotency guard
+    if (ticket.currentStatus === "Verified") {
+      return reply.send({ success: true, ticket, alreadyCompleted: true });
+    }
 
     const data = await (req as any).file();
     if (!data) return reply.status(400).send({ error: "No photo file provided" });
@@ -101,25 +113,24 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
       writeStream.on("error", reject);
     });
 
-    // Record completion as Photo_Verified
     const completedAt = new Date().toISOString();
     const audit: CompletionRecord = {
-      id: `AUDIT-${Date.now()}`,
+      id: `AUDIT-${crypto.randomUUID()}`,
       ticketId: ticket.id,
       completedAt,
       method: "Photo_Verified",
       photoPath: `/photos/${filename}`,
       actor: "Father"
     };
-    db.recordCompletion(audit);
 
-    // Calculate next occurrence
     const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
     ticket.currentStatus = "Verified";
     ticket.lastCompletedAt = completedAt;
     ticket.nextScheduledAt = nextDate.toISOString();
     ticket.isFloated = false;
-    db.saveTicket(ticket);
+
+    db.completeTicketTransaction(ticket, audit);
+    db.queueSync("verify_photo", ticket.id, { photoPath: `/photos/${filename}`, completedAt });
 
     return reply.send({ success: true, ticket, audit });
   });

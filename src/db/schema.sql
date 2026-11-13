@@ -35,5 +35,15 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS sync_queue (
+  id TEXT PRIMARY KEY,
+  action TEXT NOT NULL,
+  ticket_id TEXT NOT NULL,
+  payload TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(current_status);
 CREATE INDEX IF NOT EXISTS idx_completion_ticket_id ON completion_records(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_sync_queue_created ON sync_queue(created_at);

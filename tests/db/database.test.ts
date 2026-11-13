@@ -70,4 +70,16 @@ describe("SQLite Persistence & Audit Store", () => {
     expect(db.getSetting("google_calendar_id")).toBe("family_chores@group.calendar.google.com");
     expect(db.getSetting("nonexistent", "default_val")).toBe("default_val");
   });
+
+  it("manages offline sync queue entries", () => {
+    db.queueSync("sync_calendar", "TICK-101", { title: "Dishes" });
+    const pending = db.getPendingSyncs();
+    expect(pending.length).toBe(1);
+    expect(pending[0].action).toBe("sync_calendar");
+    expect(pending[0].ticket_id).toBe("TICK-101");
+    expect(pending[0].payload.title).toBe("Dishes");
+
+    db.removeSync(pending[0].id);
+    expect(db.getPendingSyncs().length).toBe(0);
+  });
 });
