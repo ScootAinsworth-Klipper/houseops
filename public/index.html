@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>HouseOps</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/styles.css">
+  <meta name="theme-color" content="#000000">
+</head>
+<body>
+  <!-- Header -->
+  <header class="topbar">
+    <div class="brand">
+      <span>⚡ HouseOps</span>
+    </div>
+    <div class="top-pills">
+      <div class="status-chip active" id="chipSync">
+        <span>●</span> Google Sync
+      </div>
+      <div class="status-chip" id="chipQuiet">
+        <span>🌙</span> Quiet: Off
+      </div>
+      <button class="btn btn-primary" onclick="openNewTicketModal()" style="padding:6px 12px; font-size:12px;">
+        ➕ New Task
+      </button>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="tab-nav">
+    <button class="nav-tab active" id="tabBtnActive" onclick="switchTab('active')">
+      📋 Active Work Orders (<span id="countActive">0</span>)
+    </button>
+    <button class="nav-tab" id="tabBtnFloated" onclick="switchTab('floated')">
+      ⏳ Floated / Slipped (<span id="countFloated">0</span>)
+    </button>
+    <button class="nav-tab" id="tabBtnAudit" onclick="switchTab('audit')">
+      📸 Verified History
+    </button>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main-content" id="mainContent">
+    <!-- Active Grid -->
+    <div id="viewActive" class="grid-container"></div>
+
+    <!-- Floated Grid -->
+    <div id="viewFloated" class="grid-container" style="display:none;"></div>
+
+    <!-- Audit Log -->
+    <div id="viewAudit" style="display:none; display:flex; flex-direction:column; gap:10px;"></div>
+  </main>
+
+  <!-- Hidden native camera input for 1-tap verify -->
+  <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;" onchange="handlePhotoCaptured(this)">
+
+  <!-- New Task Modal -->
+  <div class="modal-backdrop" id="newTicketModal" onclick="if(event.target===this) closeNewTicketModal()">
+    <div class="modal-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="font-size:16px;">➕ Create House Task</h3>
+        <button class="btn" onclick="closeNewTicketModal()" style="flex:0; padding:4px 8px;">✖</button>
+      </div>
+
+      <div class="form-group">
+        <label>Task Title</label>
+        <input type="text" class="form-input" id="inpTitle" placeholder="e.g. Wipe Down Kitchen Counters">
+      </div>
+
+      <div class="form-group">
+        <label>Category</label>
+        <select class="form-input" id="inpCategory">
+          <option value="Kitchen">Kitchen</option>
+          <option value="HVAC">HVAC & Filters</option>
+          <option value="Bathrooms">Bathrooms</option>
+          <option value="Trash">Trash & Recycling</option>
+          <option value="Yard">Yard & Garage</option>
+          <option value="General">General Housework</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Priority</label>
+        <select class="form-input" id="inpPriority">
+          <option value="P2-Normal">P2 - Normal</option>
+          <option value="P1-Urgent">P1 - Urgent / Daily Critical</option>
+          <option value="P3-Low">P3 - Low Priority</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Recurrence</label>
+        <select class="form-input" id="inpRecurrence" onchange="toggleRecurrenceDays(this.value)">
+          <option value="Daily">Daily</option>
+          <option value="Weekly">Weekly (Every 7 days)</option>
+          <option value="IntervalDays">Custom Interval (Days)</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="grpIntervalDays" style="display:none;">
+        <label>Interval in Days</label>
+        <input type="number" class="form-input" id="inpIntervalDays" value="60" min="1">
+      </div>
+
+      <div class="form-group">
+        <label>Preferred Window (Start Hour: 0-23)</label>
+        <input type="number" class="form-input" id="inpHour" value="19" min="0" max="23">
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+        <button class="btn" onclick="closeNewTicketModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitNewTicket()">Create Task</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

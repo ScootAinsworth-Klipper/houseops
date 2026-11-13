@@ -8,5 +8,6 @@
     "skipLibCheck": true,
     "outDir": "dist"
   },
-  "include": ["src/**/*", "daemon/**/*", "tests/**/*"]
+  "include": ["src/**/*", "daemon/**/*"],
+  "exclude": ["tests/**/*", "node_modules", "dist"]
 }
