@@ -21,7 +21,7 @@ Write-Host "Step 1: Compiling resources..."
 if ($LASTEXITCODE -ne 0) { throw "aapt2 compile failed" }
 
 Write-Host "Step 2: Linking resources..."
-& $aapt2 link -I $androidJar "$appDir\build\res.zip" --manifest "$appDir\AndroidManifest.xml" --java "$appDir\build\gen" -o "$appDir\build\app-unaligned.apk" --auto-add-overlay
+& $aapt2 link -I $androidJar "$appDir\build\res.zip" --manifest "$appDir\AndroidManifest.xml" --java "$appDir\build\gen" --min-sdk-version 26 --target-sdk-version 34 -o "$appDir\build\app-unaligned.apk" --auto-add-overlay
 if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed" }
 
 Write-Host "Step 3: Compiling Java sources..."
