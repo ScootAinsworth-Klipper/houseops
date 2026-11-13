@@ -277,6 +277,39 @@ public class MainActivity extends Activity {
         input.setText(currentServerUrl);
         layout.addView(input);
 
+        // Action Buttons inside Settings
+        Button btnTestVoice = new Button(this);
+        btnTestVoice.setText("📢 Test Voice Broadcast (All Rooms)");
+        btnTestVoice.setTextColor(Color.parseColor("#38bdf8"));
+        btnTestVoice.setBackgroundColor(Color.parseColor("#1e293b"));
+        LinearLayout.LayoutParams btnVoiceParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        btnVoiceParams.setMargins(0, 30, 0, 10);
+        btnTestVoice.setLayoutParams(btnVoiceParams);
+        btnTestVoice.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerVoiceTest();
+            }
+        });
+        layout.addView(btnTestVoice);
+
+        Button btnCheckUpdate = new Button(this);
+        btnCheckUpdate.setText("🚀 Check for App Updates");
+        btnCheckUpdate.setTextColor(Color.parseColor("#94a3b8"));
+        btnCheckUpdate.setBackgroundColor(Color.parseColor("#0f172a"));
+        LinearLayout.LayoutParams btnUpParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        btnUpParams.setMargins(0, 10, 0, 10);
+        btnCheckUpdate.setLayoutParams(btnUpParams);
+        btnCheckUpdate.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                checkForUpdates(true);
+            }
+        });
+        layout.addView(btnCheckUpdate);
+
         builder.setView(layout);
 
         builder.setPositiveButton("Save & Connect", new DialogInterface.OnClickListener() {
@@ -295,15 +328,52 @@ public class MainActivity extends Activity {
             }
         });
 
-        builder.setNeutralButton("🚀 Check for Updates", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                checkForUpdates(true);
-            }
-        });
-
-        builder.setNegativeButton("Cancel", null);
+        builder.setNegativeButton("Close", null);
         builder.show();
+    }
+
+    private void triggerVoiceTest() {
+        Toast.makeText(this, "📢 Broadcasting test across All Rooms...", Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    URL url = new URL(currentServerUrl + "/api/announce");
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setRequestProperty("Content-Type", "application/json");
+                    conn.setDoOutput(true);
+                    conn.setConnectTimeout(5000);
+                    conn.setReadTimeout(5000);
+
+                    JSONObject body = new JSONObject();
+                    body.put("message", "Hello! HouseOps voice broadcast is operational across all rooms.");
+                    body.put("speaker", "All Rooms");
+
+                    byte[] out = body.toString().getBytes("UTF-8");
+                    conn.getOutputStream().write(out);
+
+                    final int code = conn.getResponseCode();
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (code == 200) {
+                                Toast.makeText(MainActivity.this, "✅ Spoken broadcast sent!", Toast.LENGTH_SHORT).show();
+                            } else {
+                                Toast.makeText(MainActivity.this, "❌ Failed (HTTP " + code + ")", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                    });
+                } catch (final Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            }
+        }).start();
     }
 
     // --- GitHub In-App Updater ---
