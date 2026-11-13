@@ -20,9 +20,15 @@ pip3 install pychromecast gTTS --break-system-packages 2>/dev/null || pip3 insta
 sudo mkdir -p /var/houseops/photos
 sudo chown -R $USER:$USER /var/houseops
 
-# 4. Install Node dependencies and build
+# 4. Install Node dependencies
 npm install --omit=dev
-npm run build
+
+# Build if dist does not exist
+if [ ! -d "dist" ]; then
+    echo "Compiling TypeScript..."
+    npm install
+    npx tsc
+fi
 
 # 5. Setup Systemd Service
 sudo cp scripts/houseops.service /etc/systemd/system/
