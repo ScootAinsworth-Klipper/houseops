@@ -4,3 +4,4 @@ node_modules/
 *.log
 photos/
 data/*.db
+android/build/
