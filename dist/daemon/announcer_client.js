@@ -2,12 +2,12 @@ import { spawn } from "child_process";
 import path from "path";
 /**
  * Checks whether current local time falls inside quiet hours.
- * Default quiet hours: 21:30 (9:30 PM) to 07:00 (7:00 AM).
+ * Default quiet hours: 22:00 (10:00 PM) to 06:00 (6:00 AM).
  */
-export function isQuietHours(now = new Date(), startHour = 21.5, endHour = 7.0) {
+export function isQuietHours(now = new Date(), startHour = 22.0, endHour = 6.0) {
     const current = now.getHours() + now.getMinutes() / 60;
     if (startHour > endHour) {
-        // Overnight quiet hours (e.g. 21.5 to 7.0)
+        // Overnight quiet hours (e.g. 22.0 to 6.0)
         return current >= startHour || current < endHour;
     }
     return current >= startHour && current < endHour;
@@ -42,7 +42,8 @@ export async function broadcastAnnouncement(message, speakerName, scriptPath) {
     const script = scriptPath || path.resolve(process.cwd(), "daemon/cast_announcer.py");
     const args = [script, message];
     if (speakerName) {
-        args.push("--speaker", speakerName);
+        const spkStr = Array.isArray(speakerName) ? speakerName.join(",") : speakerName;
+        args.push("--speaker", spkStr);
     }
     return new Promise((resolve) => {
         let resolved = false;

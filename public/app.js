@@ -234,6 +234,21 @@ function toggleDayChip(el) {
   el.classList.toggle("active");
 }
 
+function toggleSpeakerChip(el) {
+  const isAllRooms = el.dataset.speaker === "All Rooms";
+  if (isAllRooms) {
+    const allChips = document.querySelectorAll("#speakerChips .speaker-chip");
+    allChips.forEach(c => {
+      if (c !== el) c.classList.remove("active");
+    });
+    el.classList.toggle("active");
+  } else {
+    const allRoomsChip = document.querySelector("#speakerChips .speaker-chip[data-speaker='All Rooms']");
+    if (allRoomsChip) allRoomsChip.classList.remove("active");
+    el.classList.toggle("active");
+  }
+}
+
 async function submitNewTicket() {
   const title = document.getElementById("inpTitle").value.trim();
   const category = document.getElementById("inpCategory").value;
@@ -282,11 +297,21 @@ async function submitNewTicket() {
 
   nextSched.setHours(startHour, startMinute, 0, 0);
 
+  const timing = document.getElementById("inpBroadcastTiming").value;
+  const customMessage = document.getElementById("inpBroadcastMessage").value.trim() || undefined;
+  const activeSpeakerChips = Array.from(document.querySelectorAll("#speakerChips .speaker-chip.active"));
+  const speakers = activeSpeakerChips.length > 0
+    ? activeSpeakerChips.map(c => c.dataset.speaker)
+    : ["All Rooms"];
+
+  const broadcast = timing !== "none" ? { timing, speakers, customMessage } : undefined;
+
   const payload = {
     title,
     category,
     priority,
     assignee,
+    broadcast,
     recurrence: {
       type: recType,
       intervalDays: recType === "IntervalDays" ? intervalDays : undefined,

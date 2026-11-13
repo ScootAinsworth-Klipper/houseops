@@ -69,48 +69,66 @@ def speak(text, speaker_name=None, port=8099, temp_dir="/tmp/houseops_audio"):
 
         # Discover Cast devices
         chromecasts, browser = pychromecast.get_chromecasts()
-        target_cast = None
+        target_casts = []
 
         if speaker_name:
+            if isinstance(speaker_name, str):
+                names = [s.strip().lower() for s in speaker_name.split(",") if s.strip()]
+            else:
+                names = [s.strip().lower() for s in speaker_name if s.strip()]
+
             for cast in chromecasts:
-                if cast.name.lower() == speaker_name.lower():
-                    target_cast = cast
-                    break
+                if cast.name.lower() in names:
+                    target_casts.append(cast)
 
         # Fallback 1: Prefer "All Rooms" or any Google Cast Group
-        if not target_cast:
+        if not target_casts:
             for cast in chromecasts:
                 if cast.name.lower() in ["all rooms", "everywhere", "all speakers", "house"]:
-                    target_cast = cast
+                    target_casts.append(cast)
                     break
 
-        if not target_cast:
+        if not target_casts:
             for cast in chromecasts:
                 if "group" in cast.model_name.lower():
-                    target_cast = cast
+                    target_casts.append(cast)
                     break
 
         # Fallback 2: Exclude TVs/streamers (onn, shield, tv, telly) and pick first real audio speaker
-        if not target_cast:
+        if not target_casts:
             tv_keywords = ["tv", "onn", "shield", "telly", "display"]
             for cast in chromecasts:
                 name_l = cast.name.lower()
                 model_l = cast.model_name.lower()
                 if not any(k in name_l or k in model_l for k in tv_keywords):
-                    target_cast = cast
+                    target_casts.append(cast)
                     break
 
-        if not target_cast and len(chromecasts) > 0:
-            target_cast = chromecasts[0]
+        if not target_casts and len(chromecasts) > 0:
+            target_casts.append(chromecasts[0])
 
-        if not target_cast:
+        if not target_casts:
             print("[Announcer] No Google Cast / Nest speakers discovered on local network.")
             return False
 
-        target_cast.wait(timeout=5)
-        mc = target_cast.media_controller
-        mc.play_media(media_url, "audio/mp3")
-        mc.block_until_active(timeout=5)
+        def play_on_cast(cast_dev):
+            try:
+                cast_dev.wait(timeout=5)
+                mc = cast_dev.media_controller
+                mc.play_media(media_url, "audio/mp3")
+                mc.block_until_active(timeout=5)
+            except Exception as e:
+                print(f"[Announcer] Error on {cast_dev.name}: {e}", file=sys.stderr)
+
+        threads = []
+        for cast in target_casts:
+            t = threading.Thread(target=play_on_cast, args=(cast,))
+            t.start()
+            threads.append(t)
+
+        for t in threads:
+            t.join(timeout=6)
+
         time.sleep(3) # Wait for buffer stream
         return True
     except Exception as e:

@@ -22,6 +22,7 @@ export function registerRoutes(app, db, photoDir) {
             category: body.category,
             priority: body.priority || "P2-Normal",
             assignee: body.assignee || "Dad",
+            broadcast: body.broadcast,
             recurrence: body.recurrence || { type: "Daily", baseOnCompletion: true },
             preferredWindow: body.preferredWindow || { startHour: 19, startMinute: 0, durationMinutes: 45 },
             currentStatus: body.currentStatus || "Pending",

@@ -30,6 +30,15 @@ export interface PreferredWindow {
   durationMinutes: number;
 }
 
+export type BroadcastTiming = "exact" | "15m_before" | "overdue" | "none";
+
+export interface BroadcastConfig {
+  timing: BroadcastTiming;
+  speakers: string[];
+  customMessage?: string;
+  lastAnnouncedAt?: string;
+}
+
 export type TicketStatus = "Pending" | "In_Progress" | "Verified";
 
 export interface HouseTicket {
@@ -38,6 +47,7 @@ export interface HouseTicket {
   category: TicketCategory;
   priority: TicketPriority;
   assignee?: string;
+  broadcast?: BroadcastConfig;
   recurrence: RecurrenceConfig;
   preferredWindow: PreferredWindow;
   currentStatus: TicketStatus;
