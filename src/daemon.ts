@@ -48,7 +48,7 @@ export async function runDaemonCycle(
         triggeredStage = "exact";
       } else if (stages.includes("15m_before") && diffMinutes >= 12 && diffMinutes <= 16) {
         triggeredStage = "15m_before";
-      } else if (stages.includes("overdue") && diffMinutes <= -5 && diffMinutes >= -20) {
+      } else if (stages.includes("overdue") && diffMinutes <= -15 && diffMinutes >= -25) {
         triggeredStage = "overdue";
       }
 
