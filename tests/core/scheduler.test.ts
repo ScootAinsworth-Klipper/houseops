@@ -73,4 +73,28 @@ describe("HouseOps Scheduler", () => {
     expect(result.floated.length).toBe(0);
     expect(result.updated.length).toBe(0);
   });
+
+  it("calculates weekday recurrence skipping weekends properly (e.g. dog feeding)", () => {
+    const ticket: HouseTicket = {
+      id: "TICK-DOG-AM",
+      title: "Feed Dogs (Morning)",
+      category: "General",
+      priority: "P1-Urgent",
+      assignee: "Son",
+      recurrence: { type: "Weekdays", baseOnCompletion: true },
+      preferredWindow: { startHour: 6, startMinute: 15, durationMinutes: 45 },
+      currentStatus: "Pending",
+      nextScheduledAt: "2026-11-13T06:15:00.000Z" // Friday morning
+    };
+
+    // Completed on Friday at 6:30 AM
+    const completedFriday = new Date("2026-11-13T06:30:00.000Z"); // Friday
+    const next = calculateNextOccurrence(ticket, completedFriday);
+
+    // Next must be Monday Nov 16 at 06:15
+    expect(next.getUTCDay()).toBe(1); // Monday
+    expect(next.toISOString().startsWith("2026-11-16")).toBe(true);
+    expect(next.getUTCHours()).toBe(6);
+    expect(next.getUTCMinutes()).toBe(15);
+  });
 });

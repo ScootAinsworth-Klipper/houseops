@@ -56,26 +56,42 @@ export class HouseOpsDatabase {
         this.db = new DatabaseConstructor(dbPath);
         this.db.pragma("journal_mode = WAL");
         this.db.exec(SCHEMA);
+        // Auto-migrate schema additions
+        try {
+            this.db.exec("ALTER TABLE tickets ADD COLUMN start_minute INTEGER NOT NULL DEFAULT 0");
+        }
+        catch (_) { }
+        try {
+            this.db.exec("ALTER TABLE tickets ADD COLUMN days_of_week TEXT");
+        }
+        catch (_) { }
+        try {
+            this.db.exec("ALTER TABLE tickets ADD COLUMN assignee TEXT NOT NULL DEFAULT 'Dad'");
+        }
+        catch (_) { }
     }
     saveTicket(ticket) {
         const stmt = this.db.prepare(`
       INSERT INTO tickets (
-        id, title, category, priority, recurrence_type, recurrence_interval_days,
-        recurrence_base_on_completion, start_hour, duration_minutes, current_status,
+        id, title, category, priority, assignee, recurrence_type, recurrence_interval_days,
+        days_of_week, recurrence_base_on_completion, start_hour, start_minute, duration_minutes, current_status,
         last_completed_at, next_scheduled_at, is_floated, google_calendar_event_id, google_task_id, updated_at
       ) VALUES (
-        @id, @title, @category, @priority, @recurrence_type, @recurrence_interval_days,
-        @recurrence_base_on_completion, @start_hour, @duration_minutes, @current_status,
+        @id, @title, @category, @priority, @assignee, @recurrence_type, @recurrence_interval_days,
+        @days_of_week, @recurrence_base_on_completion, @start_hour, @start_minute, @duration_minutes, @current_status,
         @last_completed_at, @next_scheduled_at, @is_floated, @google_calendar_event_id, @google_task_id, datetime('now')
       )
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         category = excluded.category,
         priority = excluded.priority,
+        assignee = excluded.assignee,
         recurrence_type = excluded.recurrence_type,
         recurrence_interval_days = excluded.recurrence_interval_days,
+        days_of_week = excluded.days_of_week,
         recurrence_base_on_completion = excluded.recurrence_base_on_completion,
         start_hour = excluded.start_hour,
+        start_minute = excluded.start_minute,
         duration_minutes = excluded.duration_minutes,
         current_status = excluded.current_status,
         last_completed_at = excluded.last_completed_at,
@@ -90,10 +106,13 @@ export class HouseOpsDatabase {
             title: ticket.title,
             category: ticket.category,
             priority: ticket.priority,
+            assignee: ticket.assignee || "Dad",
             recurrence_type: ticket.recurrence.type,
             recurrence_interval_days: ticket.recurrence.intervalDays || null,
+            days_of_week: ticket.recurrence.daysOfWeek ? JSON.stringify(ticket.recurrence.daysOfWeek) : null,
             recurrence_base_on_completion: ticket.recurrence.baseOnCompletion ? 1 : 0,
             start_hour: ticket.preferredWindow.startHour,
+            start_minute: ticket.preferredWindow.startMinute || 0,
             duration_minutes: ticket.preferredWindow.durationMinutes,
             current_status: ticket.currentStatus,
             last_completed_at: ticket.lastCompletedAt || null,
@@ -178,18 +197,28 @@ export class HouseOpsDatabase {
         this.db.close();
     }
     mapRowToTicket(row) {
+        let daysOfWeek;
+        if (row.days_of_week) {
+            try {
+                daysOfWeek = JSON.parse(row.days_of_week);
+            }
+            catch (_) { }
+        }
         return {
             id: row.id,
             title: row.title,
             category: row.category,
             priority: row.priority,
+            assignee: row.assignee || "Dad",
             recurrence: {
                 type: row.recurrence_type,
                 intervalDays: row.recurrence_interval_days || undefined,
+                daysOfWeek,
                 baseOnCompletion: row.recurrence_base_on_completion === 1
             },
             preferredWindow: {
                 startHour: row.start_hour,
+                startMinute: row.start_minute || 0,
                 durationMinutes: row.duration_minutes
             },
             currentStatus: row.current_status,

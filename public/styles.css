@@ -320,3 +320,25 @@ html, body {
   outline: none;
 }
 .form-input:focus { border-color: var(--accent); }
+
+.day-chip {
+  flex: 1;
+  min-width: 38px;
+  height: 38px;
+  background: var(--bg-card-alt);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+.day-chip.active {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #38bdf8;
+}

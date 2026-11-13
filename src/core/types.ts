@@ -8,16 +8,25 @@ export type TicketCategory =
 
 export type TicketPriority = "P1-Urgent" | "P2-Normal" | "P3-Low";
 
-export type RecurrenceType = "Daily" | "Weekly" | "Monthly" | "IntervalDays";
+export type RecurrenceType =
+  | "Daily"
+  | "Weekdays"
+  | "Weekends"
+  | "DaysOfWeek"
+  | "Weekly"
+  | "Monthly"
+  | "IntervalDays";
 
 export interface RecurrenceConfig {
   type: RecurrenceType;
   intervalDays?: number;
+  daysOfWeek?: number[]; // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
   baseOnCompletion: boolean;
 }
 
 export interface PreferredWindow {
   startHour: number; // 24-hr format (0-23)
+  startMinute?: number; // 0-59
   durationMinutes: number;
 }
 
@@ -28,6 +37,7 @@ export interface HouseTicket {
   title: string;
   category: TicketCategory;
   priority: TicketPriority;
+  assignee?: string;
   recurrence: RecurrenceConfig;
   preferredWindow: PreferredWindow;
   currentStatus: TicketStatus;

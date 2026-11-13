@@ -6,11 +6,51 @@ import { HouseTicket } from "./types.js";
 export function calculateNextOccurrence(ticket: HouseTicket, referenceDate: Date = new Date()): Date {
   const baseDate = new Date(referenceDate);
   const next = new Date(baseDate);
+  const startMinute = ticket.preferredWindow.startMinute || 0;
 
   switch (ticket.recurrence.type) {
     case "Daily":
       next.setUTCDate(next.getUTCDate() + 1);
       break;
+    case "Weekdays": {
+      let candidate = new Date(baseDate);
+      for (let i = 1; i <= 7; i++) {
+        candidate.setUTCDate(candidate.getUTCDate() + 1);
+        const day = candidate.getUTCDay();
+        if (day >= 1 && day <= 5) {
+          next.setTime(candidate.getTime());
+          break;
+        }
+      }
+      break;
+    }
+    case "Weekends": {
+      let candidate = new Date(baseDate);
+      for (let i = 1; i <= 7; i++) {
+        candidate.setUTCDate(candidate.getUTCDate() + 1);
+        const day = candidate.getUTCDay();
+        if (day === 0 || day === 6) {
+          next.setTime(candidate.getTime());
+          break;
+        }
+      }
+      break;
+    }
+    case "DaysOfWeek": {
+      const allowed = ticket.recurrence.daysOfWeek && ticket.recurrence.daysOfWeek.length > 0
+        ? ticket.recurrence.daysOfWeek
+        : [1, 2, 3, 4, 5];
+      let candidate = new Date(baseDate);
+      for (let i = 1; i <= 7; i++) {
+        candidate.setUTCDate(candidate.getUTCDate() + 1);
+        const day = candidate.getUTCDay();
+        if (allowed.includes(day)) {
+          next.setTime(candidate.getTime());
+          break;
+        }
+      }
+      break;
+    }
     case "Weekly":
       next.setUTCDate(next.getUTCDate() + 7);
       break;
@@ -23,9 +63,16 @@ export function calculateNextOccurrence(ticket: HouseTicket, referenceDate: Date
       break;
   }
 
-  // Anchor to preferred window hour (in UTC)
-  next.setUTCHours(ticket.preferredWindow.startHour, 0, 0, 0);
+  // Anchor to preferred window hour & minute (in UTC)
+  next.setUTCHours(ticket.preferredWindow.startHour, startMinute, 0, 0);
   return next;
+}
+
+function getAllowedDays(ticket: HouseTicket): number[] | null {
+  if (ticket.recurrence.type === "Weekdays") return [1, 2, 3, 4, 5];
+  if (ticket.recurrence.type === "Weekends") return [0, 6];
+  if (ticket.recurrence.type === "DaysOfWeek") return ticket.recurrence.daysOfWeek || [1, 2, 3, 4, 5];
+  return null;
 }
 
 /**
@@ -50,25 +97,40 @@ export function evaluateFloatingTickets(
     if (now.getTime() > windowEndTime.getTime()) {
       const nextWindow = new Date(now);
       const currentHour = useUtc ? now.getUTCHours() : now.getHours();
+      const currentMinute = useUtc ? now.getUTCMinutes() : now.getMinutes();
+      const startMinute = ticket.preferredWindow.startMinute || 0;
 
-      // If current time is already past preferred hour today, float to tomorrow; otherwise today
-      if (currentHour >= ticket.preferredWindow.startHour) {
-        if (useUtc) {
-          nextWindow.setUTCDate(nextWindow.getUTCDate() + 1);
-        } else {
-          nextWindow.setDate(nextWindow.getDate() + 1);
+      const allowedDays = getAllowedDays(ticket);
+      const isPastWindowToday = currentHour > ticket.preferredWindow.startHour ||
+        (currentHour === ticket.preferredWindow.startHour && currentMinute >= startMinute);
+
+      // Advance until we land on an allowed day and time
+      let candidate = new Date(now);
+      if (isPastWindowToday) {
+        if (useUtc) candidate.setUTCDate(candidate.getUTCDate() + 1);
+        else candidate.setDate(candidate.getDate() + 1);
+      }
+
+      if (allowedDays) {
+        for (let i = 0; i < 7; i++) {
+          const day = useUtc ? candidate.getUTCDay() : candidate.getDay();
+          if (allowedDays.includes(day)) {
+            break;
+          }
+          if (useUtc) candidate.setUTCDate(candidate.getUTCDate() + 1);
+          else candidate.setDate(candidate.getDate() + 1);
         }
       }
 
       if (useUtc) {
-        nextWindow.setUTCHours(ticket.preferredWindow.startHour, 0, 0, 0);
+        candidate.setUTCHours(ticket.preferredWindow.startHour, startMinute, 0, 0);
       } else {
-        nextWindow.setHours(ticket.preferredWindow.startHour, 0, 0, 0);
+        candidate.setHours(ticket.preferredWindow.startHour, startMinute, 0, 0);
       }
 
       const modifiedTicket: HouseTicket = {
         ...ticket,
-        nextScheduledAt: nextWindow.toISOString(),
+        nextScheduledAt: candidate.toISOString(),
         isFloated: true
       };
 

@@ -65,47 +65,77 @@
 
       <div class="form-group">
         <label>Task Title</label>
-        <input type="text" class="form-input" id="inpTitle" placeholder="e.g. Wipe Down Kitchen Counters">
+        <input type="text" class="form-input" id="inpTitle" placeholder="e.g. Feed Dogs (Morning)">
       </div>
 
-      <div class="form-group">
-        <label>Category</label>
-        <select class="form-input" id="inpCategory">
-          <option value="Kitchen">Kitchen</option>
-          <option value="HVAC">HVAC & Filters</option>
-          <option value="Bathrooms">Bathrooms</option>
-          <option value="Trash">Trash & Recycling</option>
-          <option value="Yard">Yard & Garage</option>
-          <option value="General">General Housework</option>
-        </select>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+        <div class="form-group">
+          <label>Category</label>
+          <select class="form-input" id="inpCategory">
+            <option value="General">General Housework</option>
+            <option value="Kitchen">Kitchen</option>
+            <option value="HVAC">HVAC & Filters</option>
+            <option value="Bathrooms">Bathrooms</option>
+            <option value="Trash">Trash & Recycling</option>
+            <option value="Yard">Yard & Garage</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Assignee</label>
+          <select class="form-input" id="inpAssignee">
+            <option value="Son">Son (Teenager)</option>
+            <option value="Dad">Dad (Father)</option>
+            <option value="Family">Shared / Anyone</option>
+          </select>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label>Priority</label>
-        <select class="form-input" id="inpPriority">
-          <option value="P2-Normal">P2 - Normal</option>
-          <option value="P1-Urgent">P1 - Urgent / Daily Critical</option>
-          <option value="P3-Low">P3 - Low Priority</option>
-        </select>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+        <div class="form-group">
+          <label>Priority</label>
+          <select class="form-input" id="inpPriority">
+            <option value="P2-Normal">P2 - Normal</option>
+            <option value="P1-Urgent">P1 - Urgent / Critical</option>
+            <option value="P3-Low">P3 - Low Priority</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Target Time</label>
+          <input type="time" class="form-input" id="inpTime" value="06:15" style="color-scheme: dark;">
+        </div>
       </div>
 
       <div class="form-group">
         <label>Recurrence</label>
-        <select class="form-input" id="inpRecurrence" onchange="toggleRecurrenceDays(this.value)">
-          <option value="Daily">Daily</option>
+        <select class="form-input" id="inpRecurrence" onchange="toggleRecurrenceOptions(this.value)">
+          <option value="Weekdays">Weekdays (Mon - Fri)</option>
+          <option value="Daily">Daily (Every Day)</option>
+          <option value="Weekends">Weekends Only (Sat - Sun)</option>
+          <option value="DaysOfWeek">Custom Days of Week</option>
           <option value="Weekly">Weekly (Every 7 days)</option>
           <option value="IntervalDays">Custom Interval (Days)</option>
         </select>
       </div>
 
+      <!-- Custom Days of Week Selector -->
+      <div class="form-group" id="grpDaysOfWeek" style="display:none;">
+        <label>Select Days of Week</label>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:2px;">
+          <button type="button" class="day-chip active" data-day="1" onclick="toggleDayChip(this)">M</button>
+          <button type="button" class="day-chip active" data-day="2" onclick="toggleDayChip(this)">Tu</button>
+          <button type="button" class="day-chip active" data-day="3" onclick="toggleDayChip(this)">W</button>
+          <button type="button" class="day-chip active" data-day="4" onclick="toggleDayChip(this)">Th</button>
+          <button type="button" class="day-chip active" data-day="5" onclick="toggleDayChip(this)">F</button>
+          <button type="button" class="day-chip" data-day="6" onclick="toggleDayChip(this)">Sa</button>
+          <button type="button" class="day-chip" data-day="0" onclick="toggleDayChip(this)">Su</button>
+        </div>
+      </div>
+
       <div class="form-group" id="grpIntervalDays" style="display:none;">
         <label>Interval in Days</label>
         <input type="number" class="form-input" id="inpIntervalDays" value="60" min="1">
-      </div>
-
-      <div class="form-group">
-        <label>Preferred Window (Start Hour: 0-23)</label>
-        <input type="number" class="form-input" id="inpHour" value="19" min="0" max="23">
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">

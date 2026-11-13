@@ -52,6 +52,16 @@ function renderTicketCard(t) {
   const isP1 = t.priority === "P1-Urgent";
   const p1Badge = isP1 ? `<span class="badge badge-p1">P1 Urgent</span>` : "";
   const floatedBadge = t.isFloated ? `<span class="badge badge-floated">⏳ Floated</span>` : "";
+  const assignee = t.assignee || "Dad";
+  const assigneeBadge = `<span class="badge" style="background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca;">👤 ${escapeHtml(assignee)}</span>`;
+
+  let recLabel = t.recurrence.type;
+  if (t.recurrence.type === "Weekdays") recLabel = "Mon - Fri";
+  else if (t.recurrence.type === "Weekends") recLabel = "Sat - Sun";
+  else if (t.recurrence.type === "DaysOfWeek" && t.recurrence.daysOfWeek) {
+    const dayNames = ["Su", "M", "Tu", "W", "Th", "F", "Sa"];
+    recLabel = t.recurrence.daysOfWeek.map(d => dayNames[d]).join(",");
+  }
 
   const schedDate = new Date(t.nextScheduledAt);
   const timeStr = schedDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -64,9 +74,10 @@ function renderTicketCard(t) {
       </div>
       <div class="badge-row">
         <span class="badge ${catClass}">${t.category}</span>
+        ${assigneeBadge}
         ${p1Badge}
         ${floatedBadge}
-        <span class="badge badge-general">${t.recurrence.type}</span>
+        <span class="badge badge-general">${recLabel}</span>
       </div>
       <div class="ticket-schedule">
         <span>🕒</span> Window: ${dateStr} at ${timeStr} (${t.preferredWindow.durationMinutes}m)
@@ -214,40 +225,75 @@ function openNewTicketModal() {
 function closeNewTicketModal() {
   document.getElementById("newTicketModal").classList.remove("open");
 }
-function toggleRecurrenceDays(val) {
+function toggleRecurrenceOptions(val) {
   document.getElementById("grpIntervalDays").style.display = val === "IntervalDays" ? "flex" : "none";
+  document.getElementById("grpDaysOfWeek").style.display = val === "DaysOfWeek" ? "flex" : "none";
+}
+
+function toggleDayChip(el) {
+  el.classList.toggle("active");
 }
 
 async function submitNewTicket() {
   const title = document.getElementById("inpTitle").value.trim();
   const category = document.getElementById("inpCategory").value;
   const priority = document.getElementById("inpPriority").value;
+  const assignee = document.getElementById("inpAssignee").value;
   const recType = document.getElementById("inpRecurrence").value;
   const intervalDays = parseInt(document.getElementById("inpIntervalDays").value, 10) || 1;
-  const startHour = parseInt(document.getElementById("inpHour").value, 10) || 19;
+  const timeVal = document.getElementById("inpTime").value || "06:15";
+  const [startHour, startMinute] = timeVal.split(":").map(Number);
 
   if (!title) {
     alert("Please enter a task title.");
     return;
   }
 
+  let daysOfWeek = undefined;
+  if (recType === "DaysOfWeek") {
+    daysOfWeek = Array.from(document.querySelectorAll("#grpDaysOfWeek .day-chip.active"))
+      .map(el => parseInt(el.dataset.day, 10));
+    if (daysOfWeek.length === 0) {
+      alert("Please select at least one day of the week.");
+      return;
+    }
+  }
+
+  // Calculate first scheduled date
   const now = new Date();
-  const nextSched = new Date(now);
-  if (now.getHours() >= startHour) {
+  let nextSched = new Date(now);
+  const isPastTimeToday = now.getHours() > startHour || (now.getHours() === startHour && now.getMinutes() >= startMinute);
+
+  if (isPastTimeToday) {
     nextSched.setDate(nextSched.getDate() + 1);
   }
-  nextSched.setHours(startHour, 0, 0, 0);
+
+  let allowedDays = null;
+  if (recType === "Weekdays") allowedDays = [1, 2, 3, 4, 5];
+  else if (recType === "Weekends") allowedDays = [0, 6];
+  else if (recType === "DaysOfWeek") allowedDays = daysOfWeek;
+
+  if (allowedDays) {
+    for (let i = 0; i < 7; i++) {
+      if (allowedDays.includes(nextSched.getDay())) break;
+      nextSched.setDate(nextSched.getDate() + 1);
+    }
+  }
+
+  nextSched.setHours(startHour, startMinute, 0, 0);
 
   const payload = {
     title,
     category,
     priority,
+    assignee,
     recurrence: {
       type: recType,
       intervalDays: recType === "IntervalDays" ? intervalDays : undefined,
+      daysOfWeek: recType === "DaysOfWeek" ? daysOfWeek : undefined,
       baseOnCompletion: true
     },
-    preferredWindow: { startHour, durationMinutes: 45 },
+    preferredWindow: { startHour, startMinute, durationMinutes: 45 },
     nextScheduledAt: nextSched.toISOString()
   };
 
