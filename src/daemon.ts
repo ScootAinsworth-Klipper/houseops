@@ -57,8 +57,17 @@ export async function runDaemonCycle(
       }
 
       if (shouldAnnounce) {
-        const message = ticket.broadcast?.customMessage ||
-          `Friendly reminder for ${ticket.assignee || "the house"}: it is time for ${ticket.title}.`;
+        let message = ticket.broadcast?.customMessage;
+        if (!message) {
+          const person = ticket.assignee === "Family" ? "the house" : (ticket.assignee || "the house");
+          if (timing === "15m_before") {
+            message = `Friendly reminder for ${person}: ${ticket.title} is coming up in 15 minutes.`;
+          } else if (timing === "overdue") {
+            message = `Attention ${person}: ${ticket.title} is now overdue. Please complete it and submit verification.`;
+          } else {
+            message = `Friendly reminder for ${person}: it is time for ${ticket.title}.`;
+          }
+        }
         const speakers = ticket.broadcast?.speakers && ticket.broadcast.speakers.length > 0
           ? ticket.broadcast.speakers
           : ["All Rooms"];
