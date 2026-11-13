@@ -59,13 +59,44 @@ export function registerRoutes(app, db, photoDir) {
         const ok = await broadcastAnnouncement(message, speakers);
         return reply.send({ success: ok, message, speakers });
     });
+    // Helper: Smart natural-language ticket matcher
+    const matchTicketFromPhrase = (phrase) => {
+        const tickets = db.getTickets();
+        const clean = phrase.toLowerCase().trim();
+        // 1. Direct ID or substring match
+        const direct = tickets.find(t => t.id.toLowerCase() === clean || t.title.toLowerCase().includes(clean));
+        if (direct)
+            return direct;
+        // 2. Keyword overlap match (so full spoken sentences match any task dynamically)
+        const stopWords = new Set(["the", "a", "an", "to", "in", "on", "for", "of", "is", "are", "was", "were", "done", "finished", "complete", "completed", "did", "just", "i", "we", "he", "she", "camden", "sawyer", "dad", "please", "now", "right", "task", "chore", "with", "out", "up"]);
+        const spokenWords = clean.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(w => w.length >= 2);
+        let bestTicket = null;
+        let bestScore = 0;
+        for (const t of tickets) {
+            const titleWords = t.title.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(w => w.length >= 2 && !stopWords.has(w));
+            let score = 0;
+            for (const tw of titleWords) {
+                if (spokenWords.some(sw => sw === tw || (sw.length >= 3 && (tw.startsWith(sw) || sw.startsWith(tw))))) {
+                    score += 2;
+                }
+            }
+            // Bonus if ticket is currently Pending (prefer active chores over already verified ones)
+            if (score > 0 && t.currentStatus === "Pending") {
+                score += 1;
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                bestTicket = t;
+            }
+        }
+        return bestTicket;
+    };
     // Voice Assistant / Webhook Quick Trigger (GET or POST)
     const triggerHandler = async (req, reply) => {
-        const q = req.params.query.toLowerCase().trim();
-        const tickets = db.getTickets();
-        const ticket = tickets.find(t => t.id.toLowerCase() === q || t.title.toLowerCase().includes(q));
+        const rawPhrase = req.params.query.trim();
+        const ticket = matchTicketFromPhrase(rawPhrase);
         if (!ticket) {
-            return reply.status(404).send({ error: `No task found matching '${req.params.query}'` });
+            return reply.status(404).send({ error: `No task found matching '${rawPhrase}'` });
         }
         const person = ticket.assignee === "Family" ? "the house" : (ticket.assignee || "the house");
         const message = ticket.broadcast?.customMessage ||
@@ -84,19 +115,31 @@ export function registerRoutes(app, db, photoDir) {
     app.get("/api/trigger/:query", triggerHandler);
     // Voice Assistant / Webhook Quick Complete (GET or POST)
     const completeVoiceHandler = async (req, reply) => {
-        const q = req.params.query.toLowerCase().trim();
-        const tickets = db.getTickets();
-        const ticket = tickets.find(t => t.id.toLowerCase() === q || t.title.toLowerCase().includes(q));
-        if (!ticket) {
-            return reply.status(404).send({ error: `No task found matching '${req.params.query}'` });
+        const spokenText = (req.body?.text || req.query?.text || req.params?.query || "").trim();
+        if (!spokenText) {
+            return reply.status(400).send({ error: "No voice phrase provided" });
         }
+        const ticket = matchTicketFromPhrase(spokenText);
+        if (!ticket) {
+            return reply.status(404).send({ error: `No task found matching '${spokenText}'` });
+        }
+        // Detect if speaker mentioned their name in the phrase
+        const lower = spokenText.toLowerCase();
+        let actor = req.body?.actor || ticket.assignee || "Voice Assistant";
+        if (lower.includes("sawyer"))
+            actor = "Sawyer";
+        else if (lower.includes("camden"))
+            actor = "Camden";
+        else if (lower.includes("dad"))
+            actor = "Dad";
         const completedAt = new Date().toISOString();
         const audit = {
             id: `AUDIT-${crypto.randomUUID()}`,
             ticketId: ticket.id,
             completedAt,
             method: "Voice_Closed",
-            actor: ticket.assignee || "Voice Assistant"
+            notes: `🎙️ "${spokenText}"`,
+            actor
         };
         const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
         ticket.currentStatus = "Verified";
@@ -105,7 +148,7 @@ export function registerRoutes(app, db, photoDir) {
         ticket.isFloated = false;
         db.completeTicketTransaction(ticket, audit);
         db.queueSync("complete_ticket", ticket.id, { method: "Voice_Closed", completedAt });
-        const person = ticket.assignee === "Family" ? "everyone" : (ticket.assignee || "everyone");
+        const person = actor === "Family" ? "everyone" : actor;
         const confirmMsg = `Awesome! ${ticket.title} is marked complete. Great job, ${person}!`;
         const speakers = ticket.broadcast?.speakers && ticket.broadcast.speakers.length > 0
             ? ticket.broadcast.speakers
@@ -117,6 +160,8 @@ export function registerRoutes(app, db, photoDir) {
     app.get("/api/done/:query", completeVoiceHandler);
     app.post("/api/complete/:query", completeVoiceHandler);
     app.get("/api/complete/:query", completeVoiceHandler);
+    app.post("/api/voice", completeVoiceHandler);
+    app.get("/api/voice", completeVoiceHandler);
     // Complete a ticket (Quick Complete or Voice)
     app.post("/api/tickets/:id/complete", async (req, reply) => {
         const { id } = req.params;

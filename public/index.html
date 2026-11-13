@@ -18,9 +18,9 @@
       <span>⚡ HouseOps</span>
     </div>
     <div class="top-pills">
-      <div class="status-chip active" id="chipSync">
-        <span>●</span> Google Sync
-      </div>
+      <button class="btn" onclick="openVoiceModal()" style="padding:6px 10px; font-size:12px; background:var(--bg-card-alt); border-color:var(--border);" title="Voice Check-Off">
+        🎙️ Voice
+      </button>
       <div class="status-chip" id="chipQuiet">
         <span>🌙</span> Quiet: Off
       </div>
@@ -200,6 +200,27 @@
         <button class="btn" onclick="closePhotoViewer()" style="flex:0; padding:4px 10px;">✖</button>
       </div>
       <img id="photoViewerImg" src="" style="width:100%; max-height:75vh; object-fit:contain; border-radius:10px; border:1px solid var(--border);">
+    </div>
+  </div>
+
+  <!-- Voice Check-Off Modal -->
+  <div class="modal-backdrop" id="voiceModal" onclick="if(event.target===this) closeVoiceModal()">
+    <div class="modal-card" style="max-width:400px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="font-size:16px;">🎙️ Voice Check-Off</h3>
+        <button class="btn" onclick="closeVoiceModal()" style="flex:0; padding:4px 8px;">✖</button>
+      </div>
+      <div style="font-size:12px; color:var(--text-muted);">
+        Speak or tap your keyboard's 🎙️ mic button and say what you completed (e.g. <em>"Camden fed the dogs"</em> or <em>"Sawyer finished dishes"</em>). The exact words will be logged!
+      </div>
+      <div class="form-group">
+        <input type="text" class="form-input" id="inpVoicePhrase" placeholder="e.g. Camden fed the dogs and gave water" onkeydown="if(event.key==='Enter') submitVoicePhrase()">
+      </div>
+      <div id="voiceStatusText" style="font-size:12px; color:var(--accent); display:none;"></div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+        <button class="btn" onclick="closeVoiceModal()">Cancel</button>
+        <button class="btn btn-primary" id="btnVoiceSubmit" onclick="submitVoicePhrase()">✓ Complete Task</button>
+      </div>
     </div>
   </div>
 

@@ -156,6 +156,9 @@ function renderAudit(audits) {
       : `<span class="badge" style="background:var(--bg-card-alt); color:var(--text-muted); border:1px solid var(--border);">✓ In-App Done</span>`;
 
     const assignee = a.ticketAssignee || a.actor || "Family";
+    const notesHtml = a.notes
+      ? `<div style="margin-top:5px; font-size:12px; color:#e2e8f0; background:rgba(255,255,255,0.05); padding:5px 8px; border-radius:6px; border-left:2px solid var(--accent);">${escapeHtml(a.notes)}</div>`
+      : "";
 
     return `
       <div class="audit-item">
@@ -166,6 +169,7 @@ function renderAudit(audits) {
             ${methodBadge}
             <span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-muted); border:1px solid var(--border);">👤 ${escapeHtml(assignee)}</span>
           </div>
+          ${notesHtml}
           <div class="audit-meta" style="margin-top:4px;">Completed ${dateStr}</div>
         </div>
       </div>
@@ -181,6 +185,92 @@ function openPhotoViewer(src, title) {
 
 function closePhotoViewer() {
   document.getElementById("photoViewerModal").classList.remove("open");
+}
+
+let activeRecognition = null;
+
+function openVoiceModal() {
+  const inp = document.getElementById("inpVoicePhrase");
+  const statusEl = document.getElementById("voiceStatusText");
+  inp.value = "";
+  statusEl.style.display = "none";
+  document.getElementById("voiceModal").classList.add("open");
+  setTimeout(() => inp.focus(), 100);
+
+  // If browser supports Web Speech API directly, try starting it
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRec) {
+    try {
+      activeRecognition = new SpeechRec();
+      activeRecognition.lang = "en-US";
+      activeRecognition.interimResults = true;
+      statusEl.innerText = "🔴 Listening... speak now!";
+      statusEl.style.display = "block";
+
+      activeRecognition.onresult = (event) => {
+        let transcript = "";
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        inp.value = transcript;
+      };
+      activeRecognition.onerror = () => {
+        statusEl.style.display = "none";
+      };
+      activeRecognition.onend = () => {
+        statusEl.style.display = "none";
+      };
+      activeRecognition.start();
+    } catch (_) {}
+  }
+}
+
+function closeVoiceModal() {
+  if (activeRecognition) {
+    try { activeRecognition.stop(); } catch (_) {}
+    activeRecognition = null;
+  }
+  document.getElementById("voiceModal").classList.remove("open");
+}
+
+async function submitVoicePhrase() {
+  const inp = document.getElementById("inpVoicePhrase");
+  const statusEl = document.getElementById("voiceStatusText");
+  const btn = document.getElementById("btnVoiceSubmit");
+  const text = inp.value.trim();
+  if (!text) return;
+
+  btn.disabled = true;
+  btn.innerText = "⏳ Matching...";
+  statusEl.style.display = "block";
+  statusEl.innerText = "Matching task & broadcasting confirmation...";
+
+  try {
+    const res = await fetch("/api/voice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      statusEl.innerText = "❌ " + (data.error || "Could not match a task.");
+      btn.disabled = false;
+      btn.innerText = "✓ Complete Task";
+      return;
+    }
+    statusEl.innerText = `✅ Marked '${data.ticket.title}' complete!`;
+    await loadTickets();
+    await loadAuditLog();
+    setTimeout(() => {
+      closeVoiceModal();
+      btn.disabled = false;
+      btn.innerText = "✓ Complete Task";
+    }, 1200);
+  } catch (e) {
+    statusEl.innerText = "❌ Error: " + e.message;
+    btn.disabled = false;
+    btn.innerText = "✓ Complete Task";
+  }
 }
 
 // 1-Tap Camera capture
