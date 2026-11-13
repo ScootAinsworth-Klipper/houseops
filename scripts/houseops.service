@@ -1,0 +1,16 @@
+[Unit]
+Description=HouseOps Household Operations & Ticketing Engine
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/HouseOps
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+Environment=PORT=8088
+
+[Install]
+WantedBy=multi-user.target
