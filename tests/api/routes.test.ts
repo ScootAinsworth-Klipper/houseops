@@ -122,5 +122,16 @@ describe("HouseOps REST API & Verification Endpoints", () => {
     expect(getTrigRes.statusCode).toBe(200);
     const getTrigData = JSON.parse(getTrigRes.body);
     expect(getTrigData.ticket.currentStatus).toBe("Pending");
+
+    // 5. Complete via voice assistant endpoint /api/done/:query
+    const voiceDoneRes = await app.inject({
+      method: "GET",
+      url: "/api/done/dogs"
+    });
+    expect(voiceDoneRes.statusCode).toBe(200);
+    const voiceDoneData = JSON.parse(voiceDoneRes.body);
+    expect(voiceDoneData.ticket.currentStatus).toBe("Verified");
+    expect(voiceDoneData.audit.method).toBe("Voice_Closed");
+    expect(voiceDoneData.message).toContain("Awesome!");
   });
 });

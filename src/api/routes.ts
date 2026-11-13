@@ -101,6 +101,50 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
   app.post("/api/trigger/:query", triggerHandler);
   app.get("/api/trigger/:query", triggerHandler);
 
+  // Voice Assistant / Webhook Quick Complete (GET or POST)
+  const completeVoiceHandler = async (req: FastifyRequest<{ Params: { query: string } }>, reply: FastifyReply) => {
+    const q = req.params.query.toLowerCase().trim();
+    const tickets = db.getTickets();
+    const ticket = tickets.find(t => t.id.toLowerCase() === q || t.title.toLowerCase().includes(q));
+
+    if (!ticket) {
+      return reply.status(404).send({ error: `No task found matching '${req.params.query}'` });
+    }
+
+    const completedAt = new Date().toISOString();
+    const audit: CompletionRecord = {
+      id: `AUDIT-${crypto.randomUUID()}`,
+      ticketId: ticket.id,
+      completedAt,
+      method: "Voice_Closed",
+      actor: ticket.assignee || "Voice Assistant"
+    };
+
+    const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
+
+    ticket.currentStatus = "Verified";
+    ticket.lastCompletedAt = completedAt;
+    ticket.nextScheduledAt = nextDate.toISOString();
+    ticket.isFloated = false;
+
+    db.completeTicketTransaction(ticket, audit);
+    db.queueSync("complete_ticket", ticket.id, { method: "Voice_Closed", completedAt });
+
+    const person = ticket.assignee === "Family" ? "everyone" : (ticket.assignee || "everyone");
+    const confirmMsg = `Awesome! ${ticket.title} is marked complete. Great job, ${person}!`;
+    const speakers = ticket.broadcast?.speakers && ticket.broadcast.speakers.length > 0
+      ? ticket.broadcast.speakers
+      : ["All Rooms"];
+
+    const ok = await broadcastAnnouncement(confirmMsg, speakers);
+    return reply.send({ success: ok, ticket, audit, message: confirmMsg });
+  };
+
+  app.post("/api/done/:query", completeVoiceHandler);
+  app.get("/api/done/:query", completeVoiceHandler);
+  app.post("/api/complete/:query", completeVoiceHandler);
+  app.get("/api/complete/:query", completeVoiceHandler);
+
   // Complete a ticket (Quick Complete or Voice)
   app.post(
     "/api/tickets/:id/complete",

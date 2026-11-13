@@ -181,14 +181,27 @@ export class HouseOpsDatabase {
     getAuditLog(ticketId) {
         let rows;
         if (ticketId) {
-            rows = this.db.prepare("SELECT * FROM completion_records WHERE ticket_id = ? ORDER BY completed_at DESC").all(ticketId);
+            rows = this.db.prepare(`
+        SELECT c.*, t.title as ticket_title, t.assignee as ticket_assignee 
+        FROM completion_records c 
+        LEFT JOIN tickets t ON c.ticket_id = t.id 
+        WHERE c.ticket_id = ? 
+        ORDER BY c.completed_at DESC
+      `).all(ticketId);
         }
         else {
-            rows = this.db.prepare("SELECT * FROM completion_records ORDER BY completed_at DESC LIMIT 100").all();
+            rows = this.db.prepare(`
+        SELECT c.*, t.title as ticket_title, t.assignee as ticket_assignee 
+        FROM completion_records c 
+        LEFT JOIN tickets t ON c.ticket_id = t.id 
+        ORDER BY c.completed_at DESC LIMIT 100
+      `).all();
         }
         return rows.map(r => ({
             id: r.id,
             ticketId: r.ticket_id,
+            ticketTitle: r.ticket_title || r.ticket_id,
+            ticketAssignee: r.ticket_assignee || r.actor,
             completedAt: r.completed_at,
             method: r.method,
             photoPath: r.photo_path || undefined,

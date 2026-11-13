@@ -192,6 +192,17 @@
     </div>
   </div>
 
+  <!-- Photo Viewer Modal -->
+  <div class="modal-backdrop" id="photoViewerModal" onclick="closePhotoViewer()">
+    <div class="modal-card" style="max-width:540px; padding:12px; align-items:center;" onclick="event.stopPropagation()">
+      <div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:8px;">
+        <h4 id="photoViewerTitle" style="font-size:15px; font-weight:700;">📸 Verification Proof</h4>
+        <button class="btn" onclick="closePhotoViewer()" style="flex:0; padding:4px 10px;">✖</button>
+      </div>
+      <img id="photoViewerImg" src="" style="width:100%; max-height:75vh; object-fit:contain; border-radius:10px; border:1px solid var(--border);">
+    </div>
+  </div>
+
   <script src="/app.js"></script>
 </body>
 </html>

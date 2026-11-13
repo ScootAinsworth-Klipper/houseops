@@ -137,34 +137,50 @@ function renderTicketCard(t) {
 function renderAudit(audits) {
   const auditView = document.getElementById("viewAudit");
   if (!audits.length) {
-    auditView.innerHTML = `<div style="color:var(--text-muted); padding:30px; text-align:center;">No verified completions recorded yet.</div>`;
+    auditView.innerHTML = `<div style="color:var(--text-muted); padding:30px; text-align:center;">No verified completions recorded yet. Complete a task or take a photo proof to view history here! ⚡</div>`;
     return;
   }
 
   auditView.innerHTML = audits.map(a => {
     const d = new Date(a.completedAt);
-    const dateStr = `${d.toLocaleDateString()} at ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    const dateStr = `${d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} at ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    const title = a.ticketTitle || a.ticketId;
     const thumb = a.photoPath
-      ? `<img src="${a.photoPath}" class="audit-thumb" onclick="window.open('${a.photoPath}')">`
-      : `<div class="audit-thumb" style="display:flex; align-items:center; justify-content:center; font-size:20px;">✓</div>`;
+      ? `<img src="${a.photoPath}" class="audit-thumb" onclick="openPhotoViewer('${a.photoPath}', '${escapeHtml(title).replace(/'/g, "\\'")}')" style="cursor:pointer;" title="Tap to expand photo">`
+      : `<div class="audit-thumb" style="display:flex; align-items:center; justify-content:center; font-size:22px; background:var(--bg-card-alt); color:var(--green);">✓</div>`;
 
     const methodBadge = a.method === "Photo_Verified"
-      ? `<span class="badge badge-kitchen">📸 Photo Proof</span>`
+      ? `<span class="badge" style="background:#064e3b; color:#6ee7b7; border:1px solid #059669;">📸 Photo Proof</span>`
       : a.method === "Voice_Closed"
-      ? `<span class="badge badge-general">🎙️ Google Assistant</span>`
-      : `<span class="badge badge-trash">✓ Quick Done</span>`;
+      ? `<span class="badge" style="background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca;">🎙️ Google Assistant</span>`
+      : `<span class="badge" style="background:var(--bg-card-alt); color:var(--text-muted); border:1px solid var(--border);">✓ In-App Done</span>`;
+
+    const assignee = a.ticketAssignee || a.actor || "Family";
 
     return `
       <div class="audit-item">
         ${thumb}
         <div class="audit-info">
-          <div class="audit-title">${escapeHtml(a.ticketId)}</div>
-          <div style="margin-top:3px;">${methodBadge}</div>
-          <div class="audit-meta">Verified by ${a.actor || "Father"} • ${dateStr}</div>
+          <div class="audit-title" style="font-weight:700; font-size:14px;">${escapeHtml(title)}</div>
+          <div style="display:flex; gap:6px; align-items:center; margin-top:4px; flex-wrap:wrap;">
+            ${methodBadge}
+            <span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-muted); border:1px solid var(--border);">👤 ${escapeHtml(assignee)}</span>
+          </div>
+          <div class="audit-meta" style="margin-top:4px;">Completed ${dateStr}</div>
         </div>
       </div>
     `;
   }).join("");
+}
+
+function openPhotoViewer(src, title) {
+  document.getElementById("photoViewerImg").src = src;
+  document.getElementById("photoViewerTitle").innerText = `📸 Proof: ${title}`;
+  document.getElementById("photoViewerModal").classList.add("open");
+}
+
+function closePhotoViewer() {
+  document.getElementById("photoViewerModal").classList.remove("open");
 }
 
 // 1-Tap Camera capture

@@ -66,9 +66,11 @@ export type CompletionMethod = "Photo_Verified" | "Quick_Complete" | "Voice_Clos
 export interface CompletionRecord {
   id: string;
   ticketId: string;
+  ticketTitle?: string;
+  ticketAssignee?: string;
   completedAt: string; // ISO 8601
   method: CompletionMethod;
   photoPath?: string;
   notes?: string;
-  actor: "Father" | "Child_1" | "Child_2";
+  actor: string;
 }
