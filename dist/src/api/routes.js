@@ -2,6 +2,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { calculateNextOccurrence, evaluateFloatingTickets } from "../core/scheduler.js";
+import { broadcastAnnouncement } from "../../daemon/announcer_client.js";
 export function registerRoutes(app, db, photoDir) {
     fs.mkdirSync(photoDir, { recursive: true });
     // Get all tickets
@@ -116,5 +117,12 @@ export function registerRoutes(app, db, photoDir) {
     app.get("/api/audit", async (req, reply) => {
         const audits = db.getAuditLog(req.query.ticketId);
         return reply.send(audits);
+    });
+    // Test Voice Broadcast
+    app.post("/api/announce", async (req, reply) => {
+        const msg = req.body?.message || "Hello! HouseOps voice broadcast is operational across all rooms.";
+        const speaker = req.body?.speaker || "All Rooms";
+        const ok = await broadcastAnnouncement(msg, speaker);
+        return reply.send({ success: ok, message: msg, speaker });
     });
 }

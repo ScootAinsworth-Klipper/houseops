@@ -39,7 +39,16 @@ if __name__ == "__main__":
     speakers = discover_speakers()
     
     if args.say and speakers:
-        target = args.speaker or speakers[0].name
+        target = args.speaker
+        if not target:
+            # Default to "All Rooms" if present
+            for c in speakers:
+                if c.name.lower() in ["all rooms", "everywhere", "house"]:
+                    target = c.name
+                    break
+        if not target:
+            target = speakers[0].name
+
         print(f"\n📢 Broadcasting to \"{target}\": '{args.say}'...")
         speak(args.say, speaker_name=target)
         print("✅ Broadcast dispatched!")

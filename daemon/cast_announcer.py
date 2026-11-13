@@ -77,6 +77,29 @@ def speak(text, speaker_name=None, port=8099, temp_dir="/tmp/houseops_audio"):
                     target_cast = cast
                     break
 
+        # Fallback 1: Prefer "All Rooms" or any Google Cast Group
+        if not target_cast:
+            for cast in chromecasts:
+                if cast.name.lower() in ["all rooms", "everywhere", "all speakers", "house"]:
+                    target_cast = cast
+                    break
+
+        if not target_cast:
+            for cast in chromecasts:
+                if "group" in cast.model_name.lower():
+                    target_cast = cast
+                    break
+
+        # Fallback 2: Exclude TVs/streamers (onn, shield, tv, telly) and pick first real audio speaker
+        if not target_cast:
+            tv_keywords = ["tv", "onn", "shield", "telly", "display"]
+            for cast in chromecasts:
+                name_l = cast.name.lower()
+                model_l = cast.model_name.lower()
+                if not any(k in name_l or k in model_l for k in tv_keywords):
+                    target_cast = cast
+                    break
+
         if not target_cast and len(chromecasts) > 0:
             target_cast = chromecasts[0]
 

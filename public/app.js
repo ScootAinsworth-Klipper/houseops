@@ -266,6 +266,24 @@ async function submitNewTicket() {
   }
 }
 
+async function testVoiceBroadcast() {
+  const btn = event?.target;
+  const original = btn ? btn.innerText : "";
+  if (btn) btn.innerText = "⏳ Speaking...";
+  try {
+    const res = await fetch("/api/announce", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Hello Scoot! HouseOps voice broadcast is operational across all rooms.", speaker: "All Rooms" })
+    });
+    const data = await res.json();
+    if (btn) btn.innerText = data.success ? "✅ Broadcasted!" : "❌ Failed";
+  } catch (e) {
+    if (btn) btn.innerText = "❌ Error";
+  }
+  setTimeout(() => { if (btn) btn.innerText = original; }, 3000);
+}
+
 function escapeHtml(str) {
   return (str || "")
     .replace(/&/g, "&amp;")
