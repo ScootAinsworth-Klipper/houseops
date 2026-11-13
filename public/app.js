@@ -84,12 +84,15 @@ function renderTicketCard(t) {
       </div>
       <div class="card-actions">
         <button class="btn btn-verify" onclick="triggerCameraCapture('${t.id}')">
-          📸 Verify (Photo)
+          📸 Verify
         </button>
         <button class="btn btn-done" onclick="quickCompleteTicket('${t.id}')">
           ✓ Done
         </button>
-        <button class="btn" onclick="openEditTicketModal('${t.id}')" style="flex:0; padding:8px 12px; background:var(--bg-card-alt); border-color:var(--border);" title="Edit Task">
+        <button class="btn btn-nudge" onclick="nudgeTicket('${t.id}', this)" title="Broadcast voice reminder right now">
+          📢 Nudge
+        </button>
+        <button class="btn" onclick="openEditTicketModal('${t.id}')" style="flex:0; padding:8px 10px; background:var(--bg-card-alt); border-color:var(--border);" title="Edit Task">
           ✏️
         </button>
       </div>
@@ -175,6 +178,30 @@ async function quickCompleteTicket(ticketId) {
   } catch (e) {
     alert("Error completing ticket: " + e.message);
   }
+}
+
+// 1-Tap Instant Voice Nudge
+async function nudgeTicket(ticketId, btn) {
+  const original = btn ? btn.innerText : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = "⏳ Calling...";
+  }
+
+  try {
+    const res = await fetch(`/api/tickets/${ticketId}/nudge`, { method: "POST" });
+    const data = await res.json();
+    if (btn) btn.innerText = data.success ? "✅ Nudged!" : "❌ Error";
+  } catch (e) {
+    if (btn) btn.innerText = "❌ Failed";
+  }
+
+  setTimeout(() => {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = original;
+    }
+  }, 3500);
 }
 
 function resizeImage(file, maxWidth, maxHeight) {

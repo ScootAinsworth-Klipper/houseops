@@ -232,6 +232,14 @@ html, body {
   border-color: var(--green);
   color: #fff;
 }
+.btn-nudge {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
+}
+.btn-nudge:active {
+  background: rgba(245, 158, 11, 0.3);
+}
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);

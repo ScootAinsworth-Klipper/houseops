@@ -49,6 +49,22 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
     return reply.send({ success: true, id: req.params.id });
   });
 
+  // Instant Task Nudge Broadcast
+  app.post("/api/tickets/:id/nudge", async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const ticket = db.getTicket(req.params.id);
+    if (!ticket) return reply.status(404).send({ error: "Ticket not found" });
+
+    const person = ticket.assignee === "Family" ? "the house" : (ticket.assignee || "the house");
+    const message = ticket.broadcast?.customMessage ||
+      `Attention ${person}: Dad needs ${ticket.title} done right now.`;
+    const speakers = ticket.broadcast?.speakers && ticket.broadcast.speakers.length > 0
+      ? ticket.broadcast.speakers
+      : ["All Rooms"];
+
+    const ok = await broadcastAnnouncement(message, speakers);
+    return reply.send({ success: ok, message, speakers });
+  });
+
   // Complete a ticket (Quick Complete or Voice)
   app.post(
     "/api/tickets/:id/complete",
