@@ -53,7 +53,19 @@ function renderTicketCard(t) {
   const p1Badge = isP1 ? `<span class="badge badge-p1">P1 Urgent</span>` : "";
   const floatedBadge = t.isFloated ? `<span class="badge badge-floated">⏳ Floated</span>` : "";
   const assignee = t.assignee || "Dad";
-  const assigneeBadge = `<span class="badge" style="background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca;">👤 ${escapeHtml(assignee)}</span>`;
+  let assigneeBadge;
+  if (assignee === "Sawyer") {
+    assigneeBadge = `<span class="badge" style="background:#3b0764; color:#f5d0fe; border:1px solid #a855f7;">👧 Sawyer</span>`;
+  } else if (assignee === "Camden" || assignee === "Son") {
+    const label = assignee === "Son" ? "👦 Son" : "👦 Camden";
+    assigneeBadge = `<span class="badge" style="background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca;">${label}</span>`;
+  } else if (assignee === "Dad") {
+    assigneeBadge = `<span class="badge" style="background:#064e3b; color:#6ee7b7; border:1px solid #059669;">👨 Dad</span>`;
+  } else if (assignee === "Family") {
+    assigneeBadge = `<span class="badge" style="background:#451a03; color:#fcd34d; border:1px solid #d97706;">👨‍👩‍👧‍👦 Family</span>`;
+  } else {
+    assigneeBadge = `<span class="badge" style="background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca;">👤 ${escapeHtml(assignee)}</span>`;
+  }
 
   const isOnDemand = t.recurrence.type === "OnDemand";
   let recLabel = t.recurrence.type;
@@ -281,7 +293,7 @@ function openNewTicketModal() {
   document.getElementById("btnDeleteTicket").style.display = "none";
   document.getElementById("inpTitle").value = "";
   document.getElementById("inpCategory").value = "General";
-  document.getElementById("inpAssignee").value = "Son";
+  document.getElementById("inpAssignee").value = "Sawyer";
   document.getElementById("inpPriority").value = "P2-Normal";
   document.getElementById("inpTime").value = "06:15";
   document.getElementById("inpRecurrence").value = "Weekdays";
