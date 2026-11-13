@@ -89,6 +89,9 @@ function renderTicketCard(t) {
         <button class="btn btn-done" onclick="quickCompleteTicket('${t.id}')">
           ✓ Done
         </button>
+        <button class="btn" onclick="openEditTicketModal('${t.id}')" style="flex:0; padding:8px 12px; background:var(--bg-card-alt); border-color:var(--border);" title="Edit Task">
+          ✏️
+        </button>
       </div>
     </div>
   `;
@@ -220,11 +223,95 @@ function switchTab(tab) {
 }
 
 function openNewTicketModal() {
+  document.getElementById("inpEditTicketId").value = "";
+  document.getElementById("modalTitle").innerText = "➕ Create House Task";
+  document.getElementById("btnSubmitModal").innerText = "Create Task";
+  document.getElementById("btnDeleteTicket").style.display = "none";
+  document.getElementById("inpTitle").value = "";
+  document.getElementById("inpCategory").value = "General";
+  document.getElementById("inpAssignee").value = "Son";
+  document.getElementById("inpPriority").value = "P2-Normal";
+  document.getElementById("inpTime").value = "06:15";
+  document.getElementById("inpRecurrence").value = "Weekdays";
+  toggleRecurrenceOptions("Weekdays");
+  document.querySelectorAll("#grpDaysOfWeek .day-chip").forEach(c => c.classList.remove("active"));
+  document.querySelectorAll("#timingChips .speaker-chip").forEach(c => {
+    c.classList.toggle("active", c.dataset.stage === "exact" || c.dataset.stage === "overdue");
+  });
+  document.querySelectorAll("#speakerChips .speaker-chip").forEach(c => {
+    c.classList.toggle("active", c.dataset.speaker === "All Rooms");
+  });
+  document.getElementById("inpBroadcastMessage").value = "";
   document.getElementById("newTicketModal").classList.add("open");
 }
+
+function openEditTicketModal(ticketId) {
+  const t = tickets.find(x => x.id === ticketId);
+  if (!t) return;
+
+  document.getElementById("inpEditTicketId").value = t.id;
+  document.getElementById("modalTitle").innerText = "✏️ Edit House Task";
+  document.getElementById("btnSubmitModal").innerText = "Save Changes";
+  document.getElementById("btnDeleteTicket").style.display = "inline-block";
+
+  document.getElementById("inpTitle").value = t.title || "";
+  document.getElementById("inpCategory").value = t.category || "General";
+  document.getElementById("inpAssignee").value = t.assignee || "Dad";
+  document.getElementById("inpPriority").value = t.priority || "P2-Normal";
+
+  const hh = String(t.preferredWindow.startHour).padStart(2, "0");
+  const mm = String(t.preferredWindow.startMinute || 0).padStart(2, "0");
+  document.getElementById("inpTime").value = `${hh}:${mm}`;
+
+  document.getElementById("inpRecurrence").value = t.recurrence.type;
+  toggleRecurrenceOptions(t.recurrence.type);
+
+  if (t.recurrence.intervalDays) {
+    document.getElementById("inpIntervalDays").value = t.recurrence.intervalDays;
+  }
+
+  const allowedDays = t.recurrence.daysOfWeek || [];
+  document.querySelectorAll("#grpDaysOfWeek .day-chip").forEach(c => {
+    c.classList.toggle("active", allowedDays.includes(parseInt(c.dataset.day, 10)));
+  });
+
+  const stages = t.broadcast?.stages || (t.broadcast?.timing ? [t.broadcast.timing] : []);
+  document.querySelectorAll("#timingChips .speaker-chip").forEach(c => {
+    c.classList.toggle("active", stages.includes(c.dataset.stage));
+  });
+
+  const speakers = t.broadcast?.speakers || ["All Rooms"];
+  document.querySelectorAll("#speakerChips .speaker-chip").forEach(c => {
+    c.classList.toggle("active", speakers.includes(c.dataset.speaker));
+  });
+
+  document.getElementById("inpBroadcastMessage").value = t.broadcast?.customMessage || "";
+  document.getElementById("newTicketModal").classList.add("open");
+}
+
+async function deleteCurrentTicket() {
+  const id = document.getElementById("inpEditTicketId").value;
+  if (!id) return;
+  if (!confirm("Are you sure you want to delete this task?")) return;
+
+  try {
+    const res = await fetch(`/api/tickets/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("Delete failed");
+    closeNewTicketModal();
+    await loadTickets();
+  } catch (e) {
+    alert("Error deleting task: " + e.message);
+  }
+}
+
 function closeNewTicketModal() {
   document.getElementById("newTicketModal").classList.remove("open");
 }
+
+function toggleStageChip(el) {
+  el.classList.toggle("active");
+}
+
 function toggleRecurrenceOptions(val) {
   document.getElementById("grpIntervalDays").style.display = val === "IntervalDays" ? "flex" : "none";
   document.getElementById("grpDaysOfWeek").style.display = val === "DaysOfWeek" ? "flex" : "none";
@@ -250,6 +337,7 @@ function toggleSpeakerChip(el) {
 }
 
 async function submitNewTicket() {
+  const editId = document.getElementById("inpEditTicketId").value || undefined;
   const title = document.getElementById("inpTitle").value.trim();
   const category = document.getElementById("inpCategory").value;
   const priority = document.getElementById("inpPriority").value;
@@ -297,16 +385,18 @@ async function submitNewTicket() {
 
   nextSched.setHours(startHour, startMinute, 0, 0);
 
-  const timing = document.getElementById("inpBroadcastTiming").value;
+  const activeStages = Array.from(document.querySelectorAll("#timingChips .speaker-chip.active"))
+    .map(c => c.dataset.stage);
   const customMessage = document.getElementById("inpBroadcastMessage").value.trim() || undefined;
   const activeSpeakerChips = Array.from(document.querySelectorAll("#speakerChips .speaker-chip.active"));
   const speakers = activeSpeakerChips.length > 0
     ? activeSpeakerChips.map(c => c.dataset.speaker)
     : ["All Rooms"];
 
-  const broadcast = timing !== "none" ? { timing, speakers, customMessage } : undefined;
+  const broadcast = activeStages.length > 0 ? { stages: activeStages, speakers, customMessage } : undefined;
 
   const payload = {
+    id: editId,
     title,
     category,
     priority,

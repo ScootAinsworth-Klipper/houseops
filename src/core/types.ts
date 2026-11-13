@@ -30,13 +30,15 @@ export interface PreferredWindow {
   durationMinutes: number;
 }
 
-export type BroadcastTiming = "exact" | "15m_before" | "overdue" | "none";
+export type BroadcastStage = "exact" | "15m_before" | "overdue";
 
 export interface BroadcastConfig {
-  timing: BroadcastTiming;
+  stages?: BroadcastStage[]; // e.g. ["exact", "overdue"]
+  timing?: string; // backwards compatibility
   speakers: string[];
   customMessage?: string;
   lastAnnouncedAt?: string;
+  lastAnnouncedStage?: string;
 }
 
 export type TicketStatus = "Pending" | "In_Progress" | "Verified";

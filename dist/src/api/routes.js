@@ -34,6 +34,11 @@ export function registerRoutes(app, db, photoDir) {
         db.saveTicket(ticket);
         return reply.status(201).send(ticket);
     });
+    // Delete a ticket
+    app.delete("/api/tickets/:id", async (req, reply) => {
+        db.deleteTicket(req.params.id);
+        return reply.send({ success: true, id: req.params.id });
+    });
     // Complete a ticket (Quick Complete or Voice)
     app.post("/api/tickets/:id/complete", async (req, reply) => {
         const { id } = req.params;

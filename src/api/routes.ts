@@ -43,6 +43,12 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
     return reply.status(201).send(ticket);
   });
 
+  // Delete a ticket
+  app.delete("/api/tickets/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    db.deleteTicket(req.params.id);
+    return reply.send({ success: true, id: req.params.id });
+  });
+
   // Complete a ticket (Quick Complete or Voice)
   app.post(
     "/api/tickets/:id/complete",

@@ -138,6 +138,9 @@ export class HouseOpsDatabase {
         const rows = this.db.prepare("SELECT * FROM tickets ORDER BY next_scheduled_at ASC").all();
         return rows.map(r => this.mapRowToTicket(r));
     }
+    deleteTicket(id) {
+        this.db.prepare("DELETE FROM tickets WHERE id = ?").run(id);
+    }
     recordCompletion(record) {
         const stmt = this.db.prepare(`
       INSERT INTO completion_records (id, ticket_id, completed_at, method, photo_path, notes, actor)

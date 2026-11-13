@@ -58,8 +58,9 @@
   <!-- New Task Modal -->
   <div class="modal-backdrop" id="newTicketModal" onclick="if(event.target===this) closeNewTicketModal()">
     <div class="modal-card">
+      <input type="hidden" id="inpEditTicketId" value="">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h3 style="font-size:16px;">➕ Create House Task</h3>
+        <h3 id="modalTitle" style="font-size:16px;">➕ Create House Task</h3>
         <button class="btn" onclick="closeNewTicketModal()" style="flex:0; padding:4px 8px;">✖</button>
       </div>
 
@@ -145,13 +146,12 @@
         </div>
 
         <div class="form-group">
-          <label>Broadcast Timing</label>
-          <select class="form-input" id="inpBroadcastTiming">
-            <option value="exact">At Scheduled Time (e.g. 6:15 AM)</option>
-            <option value="15m_before">15 Minutes Before</option>
-            <option value="overdue">When Overdue (If Missed)</option>
-            <option value="none">Off (No Spoken Reminders)</option>
-          </select>
+          <label>Broadcast Reminders (Select All That Apply)</label>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:2px;" id="timingChips">
+            <button type="button" class="speaker-chip active" data-stage="exact" onclick="toggleStageChip(this)">At Scheduled Time</button>
+            <button type="button" class="speaker-chip" data-stage="15m_before" onclick="toggleStageChip(this)">15m Before</button>
+            <button type="button" class="speaker-chip active" data-stage="overdue" onclick="toggleStageChip(this)">Overdue Nudge (If Missed)</button>
+          </div>
         </div>
 
         <div class="form-group">
@@ -173,9 +173,12 @@
         </div>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
-        <button class="btn" onclick="closeNewTicketModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="submitNewTicket()">Create Task</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:10px;">
+        <button class="btn" id="btnDeleteTicket" onclick="deleteCurrentTicket()" style="display:none; color:var(--red); border-color:rgba(239, 68, 68, 0.4); background:rgba(239, 68, 68, 0.1);">🗑️ Delete</button>
+        <div style="display:flex; gap:8px; margin-left:auto;">
+          <button class="btn" onclick="closeNewTicketModal()">Cancel</button>
+          <button class="btn btn-primary" id="btnSubmitModal" onclick="submitNewTicket()">Create Task</button>
+        </div>
       </div>
     </div>
   </div>

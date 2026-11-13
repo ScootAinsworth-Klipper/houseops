@@ -135,6 +135,10 @@ export class HouseOpsDatabase {
     return rows.map(r => this.mapRowToTicket(r));
   }
 
+  deleteTicket(id: string): void {
+    this.db.prepare("DELETE FROM tickets WHERE id = ?").run(id);
+  }
+
   recordCompletion(record: CompletionRecord): void {
     const stmt = this.db.prepare(`
       INSERT INTO completion_records (id, ticket_id, completed_at, method, photo_path, notes, actor)
