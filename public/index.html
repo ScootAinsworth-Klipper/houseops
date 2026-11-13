@@ -9,9 +9,12 @@
   <meta name="theme-color" content="#000000">
 </head>
 <body>
+  <!-- Refresh Notification Pill -->
+  <div id="refreshPill" class="refresh-pill">🔄 Refreshing Operations...</div>
+
   <!-- Header -->
   <header class="topbar">
-    <div class="brand">
+    <div class="brand" onclick="manualRefresh()" style="cursor:pointer;" title="Tap to refresh">
       <span>⚡ HouseOps</span>
     </div>
     <div class="top-pills">

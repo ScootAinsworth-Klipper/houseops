@@ -453,7 +453,44 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
+function manualRefresh() {
+  const pill = document.getElementById("refreshPill");
+  if (pill) {
+    pill.classList.add("visible");
+    setTimeout(() => pill.classList.remove("visible"), 1200);
+  }
+  loadTickets();
+}
+
+function setupPullToRefresh() {
+  const content = document.getElementById("mainContent");
+  if (!content) return;
+
+  let startY = 0;
+  let isAtTop = false;
+
+  content.addEventListener("touchstart", (e) => {
+    if (content.scrollTop <= 2) {
+      startY = e.touches[0].clientY;
+      isAtTop = true;
+    } else {
+      isAtTop = false;
+    }
+  }, { passive: true });
+
+  content.addEventListener("touchmove", (e) => {
+    if (!isAtTop) return;
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - startY;
+    if (diff > 80) {
+      isAtTop = false;
+      manualRefresh();
+    }
+  }, { passive: true });
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   loadTickets();
+  setupPullToRefresh();
   setInterval(loadTickets, 30000); // 30s auto-refresh
 });

@@ -362,3 +362,26 @@ html, body {
   color: #ffffff;
   border-color: #38bdf8;
 }
+
+.refresh-pill {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-60px);
+  background: #0284c7;
+  color: white;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  z-index: 9999;
+  transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.refresh-pill.visible {
+  transform: translateX(-50%) translateY(0);
+}
