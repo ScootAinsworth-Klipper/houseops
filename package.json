@@ -1,0 +1,25 @@
+{
+  "name": "houseops",
+  "version": "1.0.0",
+  "description": "Household Operations & Ticketing Engine",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "houseops",
+    "ticketing",
+    "chores",
+    "smart-home"
+  ],
+  "author": "Scoot Ainsworth",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
