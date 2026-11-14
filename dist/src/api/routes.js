@@ -206,6 +206,33 @@ export function registerRoutes(app, db, photoDir) {
         db.queueSync("complete_ticket", ticket.id, { method, completedAt });
         return reply.send({ success: true, ticket, audit });
     });
+    // Reopen / Send Back a completed ticket (Admin undo or rejection)
+    app.post("/api/tickets/:id/reopen", async (req, reply) => {
+        const { id } = req.params;
+        const ticket = db.getTicket(id);
+        if (!ticket)
+            return reply.status(404).send({ error: "Ticket not found" });
+        if (req.body?.auditId) {
+            db.deleteCompletionRecord(req.body.auditId);
+        }
+        else {
+            db.deleteLatestCompletionForTicket(ticket.id);
+        }
+        ticket.currentStatus = "Pending";
+        ticket.isFloated = false;
+        ticket.googleTaskId = undefined; // Re-sync to Google Tasks as active
+        ticket.nextScheduledAt = new Date().toISOString();
+        db.saveTicket(ticket);
+        let announced = false;
+        if (req.body?.announce) {
+            const person = ticket.assignee === "Family" ? "everyone" : (ticket.assignee || "the house");
+            const reasonText = req.body.reason ? ` ${req.body.reason}` : "";
+            const msg = `Attention ${person}: Dad checked ${ticket.title} and sent it back.${reasonText} Please make sure it is completely finished.`;
+            const speakers = ticket.broadcast?.speakers?.length ? ticket.broadcast.speakers : ["All Rooms"];
+            announced = await broadcastAnnouncement(msg, speakers);
+        }
+        return reply.send({ success: true, ticket, announced });
+    });
     // Upload photo verification proof
     app.post("/api/tickets/:id/photo", async (req, reply) => {
         const { id } = req.params;

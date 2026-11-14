@@ -54,6 +54,7 @@ function applyProfileUI() {
 
   renderTickets();
   updateCounts();
+  if (currentTab === "audit") loadAuditLog();
 }
 
 function setDadFilter(filterVal) {
@@ -63,6 +64,7 @@ function setDadFilter(filterVal) {
   });
   renderTickets();
   updateCounts();
+  if (currentTab === "audit") loadAuditLog();
 }
 
 function openProfileModal(isFirstRun = false) {
@@ -417,15 +419,25 @@ function renderCalendar() {
           else if (assignee === "Sawyer") { personTag = "👧 Sawyer"; personColor = "#f5d0fe"; }
           else if (assignee === "Family") { personTag = "👨‍👩‍👧‍👦 Family"; personColor = "#fcd34d"; }
 
+          const isDoneToday = isToday && t.currentStatus === "Verified";
+          const statusBadge = isDoneToday
+            ? `<span style="font-size:10px; font-weight:700; color:var(--green); background:var(--green-soft); border:1px solid rgba(34,197,94,0.35); padding:2px 6px; border-radius:5px;">✓ Done</span>`
+            : "";
+          const reopenInlineBtn = (isDoneToday && isAdmin)
+            ? `<button class="btn" onclick="event.stopPropagation(); reopenTicket('${t.id}', null, false, this)" style="flex:0; padding:3px 7px; font-size:10px; color:var(--yellow); border-color:rgba(234,179,8,0.4); background:var(--yellow-soft);" title="Mark Not Done / Send Back">↩️ Undo</button>`
+            : "";
+
           const clickAttr = isAdmin ? `onclick="openEditTicketModal('${t.id}')" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:var(--bg-card-alt); border:1px solid var(--border); border-radius:8px;" title="Tap to edit schedule"` : `style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:var(--bg-card-alt); border:1px solid var(--border); border-radius:8px;"`;
 
           return `
             <div ${clickAttr}>
               <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
                 <span style="font-size:11px; font-weight:700; color:var(--accent); background:rgba(56,189,248,0.12); padding:3px 6px; border-radius:5px; white-space:nowrap;">${timeLabel}</span>
-                <span style="font-size:13px; font-weight:600; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(t.title)}</span>
+                <span style="font-size:13px; font-weight:600; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; ${isDoneToday ? "text-decoration:line-through; opacity:0.75;" : ""}">${escapeHtml(t.title)}</span>
+                ${statusBadge}
               </div>
               <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                ${reopenInlineBtn}
                 <span style="font-size:11px; font-weight:700; color:${personColor};">${personTag}</span>
                 ${isAdmin ? `<span style="font-size:11px; opacity:0.6;">✏️</span>` : ""}
               </div>
@@ -592,6 +604,18 @@ function renderAudit(audits) {
       ? `<div style="margin-top:5px; font-size:12px; color:#e2e8f0; background:rgba(255,255,255,0.05); padding:5px 8px; border-radius:6px; border-left:2px solid var(--accent);">${escapeHtml(a.notes)}</div>`
       : "";
 
+    const isAdmin = currentProfile === "Dad";
+    const adminActionsHtml = isAdmin
+      ? `<div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+           <button class="btn" onclick="reopenTicket('${a.ticketId}', '${a.id}', false, this)" style="flex:0 0 auto; padding:5px 10px; font-size:11px; color:var(--yellow); border-color:rgba(234,179,8,0.4); background:var(--yellow-soft);">
+             ↩️ Mark Not Done
+           </button>
+           <button class="btn btn-nudge" onclick="reopenTicket('${a.ticketId}', '${a.id}', true, this)" style="flex:0 0 auto; padding:5px 10px; font-size:11px;">
+             📢 Send Back & Announce
+           </button>
+         </div>`
+      : "";
+
     return `
       <div class="audit-item">
         ${thumb}
@@ -603,10 +627,35 @@ function renderAudit(audits) {
           </div>
           ${notesHtml}
           <div class="audit-meta" style="margin-top:4px;">Completed ${dateStr}</div>
+          ${adminActionsHtml}
         </div>
       </div>
     `;
   }).join("");
+}
+
+async function reopenTicket(ticketId, auditId, announce, btn) {
+  const original = btn ? btn.innerText : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = announce ? "⏳ Sending Back..." : "⏳ Reopening...";
+  }
+  try {
+    const res = await fetch(`/api/tickets/${ticketId}/reopen`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auditId: auditId || undefined, announce: Boolean(announce) })
+    });
+    if (!res.ok) throw new Error("Failed to reopen task");
+    await loadTickets();
+    await loadAuditLog();
+  } catch (e) {
+    alert("Error reopening task: " + e.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = original;
+    }
+  }
 }
 
 function openPhotoViewer(src, title) {

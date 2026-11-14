@@ -151,6 +151,15 @@ export class HouseOpsDatabase {
     deleteTicket(id) {
         this.db.prepare("DELETE FROM tickets WHERE id = ?").run(id);
     }
+    deleteCompletionRecord(auditId) {
+        this.db.prepare("DELETE FROM completion_records WHERE id = ?").run(auditId);
+    }
+    deleteLatestCompletionForTicket(ticketId) {
+        const row = this.db.prepare("SELECT id FROM completion_records WHERE ticket_id = ? ORDER BY completed_at DESC LIMIT 1").get(ticketId);
+        if (row && row.id) {
+            this.db.prepare("DELETE FROM completion_records WHERE id = ?").run(row.id);
+        }
+    }
     recordCompletion(record) {
         const stmt = this.db.prepare(`
       INSERT INTO completion_records (id, ticket_id, completed_at, method, photo_path, notes, actor)
