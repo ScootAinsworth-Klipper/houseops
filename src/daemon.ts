@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import { HouseOpsDatabase } from "./db/database.js";
 import { evaluateFloatingTickets, calculateNextOccurrence } from "./core/scheduler.js";
 import { CompletionRecord } from "./core/types.js";
@@ -263,11 +265,42 @@ export async function runDaemonCycle(
 }
 
 let daemonTimer: NodeJS.Timeout | null = null;
+let lastPhotoPruneAt = 0;
+
+export function pruneOldLocalPhotos(maxAgeDays: number = 30): number {
+  const photoDir = path.resolve(process.cwd(), process.env.PHOTO_DIR || "photos");
+  if (!fs.existsSync(photoDir)) return 0;
+  const cutoffMs = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+  let deleted = 0;
+  try {
+    for (const file of fs.readdirSync(photoDir)) {
+      if (!/\.(jpg|jpeg|png|webp)$/i.test(file)) continue;
+      const fullPath = path.join(photoDir, file);
+      const stat = fs.statSync(fullPath);
+      if (stat.isFile() && stat.mtimeMs < cutoffMs) {
+        fs.unlinkSync(fullPath);
+        deleted++;
+      }
+    }
+    if (deleted > 0) {
+      console.log(`[Storage] Auto-pruned ${deleted} local photo(s) older than ${maxAgeDays} days from ${photoDir}`);
+    }
+  } catch (err) {
+    console.error("[Storage] Photo prune error:", err);
+  }
+  return deleted;
+}
 
 export function startDaemon(db: HouseOpsDatabase, intervalMs: number = 20000): void {
   if (daemonTimer) return;
   console.log(`⚡ HouseOps Background Scheduler & Google Tasks Daemon active (polling every ${Math.round(intervalMs / 1000)}s)`);
+  pruneOldLocalPhotos(30);
+  lastPhotoPruneAt = Date.now();
   daemonTimer = setInterval(() => {
+    if (Date.now() - lastPhotoPruneAt > 6 * 60 * 60 * 1000) {
+      pruneOldLocalPhotos(30);
+      lastPhotoPruneAt = Date.now();
+    }
     runDaemonCycle(db).catch(err => console.error("Daemon cycle error:", err));
   }, intervalMs);
 }
