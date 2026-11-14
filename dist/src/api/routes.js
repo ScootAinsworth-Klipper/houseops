@@ -3,6 +3,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { calculateNextOccurrence, evaluateFloatingTickets } from "../core/scheduler.js";
 import { broadcastAnnouncement, getQuietHoursConfig, setQuietHoursConfig, isQuietHours } from "../../daemon/announcer_client.js";
+import { createGoogleTasksClient } from "../sync/google.js";
 import { runDaemonCycle } from "../daemon.js";
 export function registerRoutes(app, db, photoDir) {
     fs.mkdirSync(photoDir, { recursive: true });
@@ -66,6 +67,7 @@ export function registerRoutes(app, db, photoDir) {
             ticket.nextScheduledAt = new Date().toISOString();
             db.saveTicket(ticket);
         }
+        db.pushNotification(ticket.assignee || "Family", `📢 Alert: ${ticket.title}`, message, "active");
         const ok = await broadcastAnnouncement(message, speakers);
         return reply.send({ success: ok, message, speakers });
     });
@@ -118,6 +120,7 @@ export function registerRoutes(app, db, photoDir) {
         ticket.currentStatus = "Pending";
         ticket.nextScheduledAt = new Date().toISOString();
         db.saveTicket(ticket);
+        db.pushNotification(ticket.assignee || "Family", `📢 Alert: ${ticket.title}`, message, "active");
         const ok = await broadcastAnnouncement(message, speakers);
         return reply.send({ success: ok, ticket, message, speakers });
     };
@@ -158,6 +161,7 @@ export function registerRoutes(app, db, photoDir) {
         ticket.isFloated = false;
         db.completeTicketTransaction(ticket, audit);
         db.queueSync("complete_ticket", ticket.id, { method: "Voice_Closed", completedAt });
+        db.pushNotification("Dad", `🎙️ ${actor} Completed Chore`, `${ticket.title} — "${spokenText}"`, "audit");
         const person = actor === "Family" ? "everyone" : actor;
         const confirmMsg = `Awesome! ${ticket.title} is marked complete. Great job, ${person}!`;
         const speakers = ticket.broadcast?.speakers && ticket.broadcast.speakers.length > 0
@@ -204,6 +208,9 @@ export function registerRoutes(app, db, photoDir) {
         ticket.isFloated = false;
         db.completeTicketTransaction(ticket, audit);
         db.queueSync("complete_ticket", ticket.id, { method, completedAt });
+        if (actor !== "Dad") {
+            db.pushNotification("Dad", `✅ ${actor} Completed Chore`, `${actor} marked "${ticket.title}" Done.`, "audit");
+        }
         return reply.send({ success: true, ticket, audit });
     });
     // Reopen / Send Back a completed ticket (Admin undo or rejection)
@@ -228,6 +235,8 @@ export function registerRoutes(app, db, photoDir) {
             ticket.broadcast.lastAnnouncedAt = nowIso;
         }
         db.saveTicket(ticket);
+        const reasonSuffix = req.body?.reason ? ` Note: "${req.body.reason}"` : "";
+        db.pushNotification(ticket.assignee || "Family", `↩️ Chore Sent Back: ${ticket.title}`, `Dad checked "${ticket.title}" and sent it back.${reasonSuffix} Please make sure it is completely finished!`, "active");
         let announced = false;
         if (req.body?.announce) {
             const person = ticket.assignee === "Family" ? "everyone" : (ticket.assignee || "the house");
@@ -278,6 +287,21 @@ export function registerRoutes(app, db, photoDir) {
         ticket.isFloated = false;
         db.completeTicketTransaction(ticket, audit);
         db.queueSync("verify_photo", ticket.id, { photoPath: `/photos/${filename}`, completedAt });
+        db.pushNotification("Dad", `📸 Photo Proof from ${actor}`, `${actor} uploaded photo verification for "${ticket.title}". Tap to view!`, "audit");
+        // Async backup to Google Drive ("HouseOps Photos" folder) if Google bridge is configured
+        const webappUrl = db.getSetting("google_webapp_url");
+        if (webappUrl) {
+            fs.promises.readFile(filePath).then(async (buf) => {
+                const gClient = createGoogleTasksClient({ webappUrl });
+                if (gClient.drive?.uploadPhoto) {
+                    const dateTag = completedAt.slice(0, 10);
+                    const safeTitle = ticket.title.replace(/[^a-zA-Z0-9_-]/g, "_");
+                    const driveFilename = `${dateTag}_${actor}_${safeTitle}_${filename}`;
+                    await gClient.drive.uploadPhoto(driveFilename, buf.toString("base64"), "image/jpeg");
+                    console.log(`[DriveBackup] Backed up ${driveFilename} to Google Drive 'HouseOps Photos'`);
+                }
+            }).catch(err => console.error("[DriveBackup] Upload failed:", err));
+        }
         return reply.send({ success: true, ticket, audit });
     });
     // Evaluate and float overdue pending chores
@@ -293,6 +317,17 @@ export function registerRoutes(app, db, photoDir) {
     app.get("/api/audit", async (req, reply) => {
         const audits = db.getAuditLog(req.query.ticketId);
         return reply.send(audits);
+    });
+    // Poll profile-targeted push notifications
+    app.get("/api/notifications", async (req, reply) => {
+        const profile = req.query.profile || "Dad";
+        const since = parseInt(req.query.since || "0", 10) || 0;
+        const serverTime = Date.now();
+        if (since <= 0) {
+            return reply.send({ serverTime, notifications: [] });
+        }
+        const notifications = db.getNotifications(profile, since);
+        return reply.send({ serverTime, notifications });
     });
     // Test Voice Broadcast
     app.post("/api/announce", async (req, reply) => {

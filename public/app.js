@@ -52,6 +52,10 @@ function applyProfileUI() {
     filterBar.style.display = (currentProfile === "Dad" && currentTab !== "audit") ? "flex" : "none";
   }
 
+  if (window.HouseOpsNative && typeof window.HouseOpsNative.setProfile === "function") {
+    try { window.HouseOpsNative.setProfile(currentProfile); } catch (_) {}
+  }
+
   renderTickets();
   updateCounts();
   if (currentTab === "audit") loadAuditLog();
@@ -1476,7 +1480,8 @@ window.addEventListener("DOMContentLoaded", () => {
   if (!localStorage.getItem("houseops_profile")) {
     openProfileModal(true);
   }
-  const savedTab = sessionStorage.getItem("houseops_tab");
+  const urlTab = new URLSearchParams(window.location.search).get("tab");
+  const savedTab = urlTab || sessionStorage.getItem("houseops_tab");
   if (savedTab && TAB_ORDER.includes(savedTab)) {
     switchTab(savedTab);
   }

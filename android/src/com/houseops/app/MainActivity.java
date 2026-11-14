@@ -24,6 +24,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -55,6 +56,7 @@ public class MainActivity extends Activity {
     private static final String GITHUB_REPO_API = "https://api.github.com/repos/ScootAinsworth-Klipper/houseops/releases/latest";
     private static final int FILECHOOSER_RESULTCODE = 1001;
     private static final int REQUEST_CAMERA_PERMISSION = 1002;
+    private static final int REQUEST_NOTIF_PERMISSION = 1003;
 
     private WebView webView;
     private FrameLayout rootLayout;
@@ -123,10 +125,54 @@ public class MainActivity extends Activity {
             registerReceiver(downloadReceiver, filter);
         }
 
-        loadHouseOps();
+        loadHouseOps(getIntent());
+
+        // Request Android 13+ notification permission & start background push service
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQUEST_NOTIF_PERMISSION);
+            }
+        }
+        startNotificationService();
 
         // Check for updates in background
         checkForUpdates(false);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (intent != null && intent.hasExtra("tab")) {
+            loadHouseOps(intent);
+        }
+    }
+
+    private void startNotificationService() {
+        try {
+            Intent svc = new Intent(this, NotificationService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(svc);
+            } else {
+                startService(svc);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public class WebAppBridge {
+        @JavascriptInterface
+        public void setProfile(String profile) {
+            if (profile == null || profile.trim().isEmpty()) return;
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            String prev = prefs.getString("user_profile", "");
+            if (!profile.equals(prev)) {
+                prefs.edit()
+                     .putString("user_profile", profile)
+                     .putLong("last_notif_ts", 0L)
+                     .apply();
+                startNotificationService();
+            }
+        }
     }
 
     @Override
@@ -156,6 +202,8 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             WebView.setWebContentsDebuggingEnabled(true);
         }
+
+        webView.addJavascriptInterface(new WebAppBridge(), "HouseOpsNative");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -245,9 +293,20 @@ public class MainActivity extends Activity {
     }
 
     private void loadHouseOps() {
+        loadHouseOps(null);
+    }
+
+    private void loadHouseOps(Intent intent) {
         errorView.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
-        webView.loadUrl(currentServerUrl);
+        String targetUrl = currentServerUrl;
+        if (intent != null && intent.hasExtra("tab")) {
+            String tab = intent.getStringExtra("tab");
+            if (tab != null && !tab.isEmpty()) {
+                targetUrl = currentServerUrl + "/?tab=" + Uri.encode(tab);
+            }
+        }
+        webView.loadUrl(targetUrl);
     }
 
     private void showError(String msg) {

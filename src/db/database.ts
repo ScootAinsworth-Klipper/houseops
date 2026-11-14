@@ -48,6 +48,15 @@ CREATE TABLE IF NOT EXISTS sync_queue (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  target_profile TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  tab TEXT NOT NULL DEFAULT 'active',
+  created_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(current_status);
 CREATE INDEX IF NOT EXISTS idx_completion_ticket_id ON completion_records(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_sync_queue_created ON sync_queue(created_at);
@@ -241,6 +250,50 @@ export class HouseOpsDatabase {
   getSetting(key: string, defaultValue: string = ""): string {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as any;
     return row ? row.value : defaultValue;
+  }
+
+  pushNotification(targetProfile: string, title: string, body: string, tab: string = "active"): number {
+    const nowMs = Date.now();
+    const res = this.db.prepare(`
+      INSERT INTO notifications (target_profile, title, body, tab, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(targetProfile, title, body, tab, nowMs);
+    // Keep table compact
+    try {
+      this.db.prepare("DELETE FROM notifications WHERE created_at < ?").run(nowMs - 24 * 60 * 60 * 1000);
+    } catch (_) {}
+    return Number(res.lastInsertRowid);
+  }
+
+  getNotifications(profile: string, sinceMs: number): Array<{ id: number; targetProfile: string; title: string; body: string; tab: string; createdAt: number }> {
+    let rows: any[];
+    if (profile === "Dad") {
+      rows = this.db.prepare(`
+        SELECT * FROM notifications
+        WHERE created_at > ? AND target_profile = 'Dad'
+        ORDER BY created_at ASC LIMIT 25
+      `).all(sinceMs) as any[];
+    } else if (profile === "Camden" || profile === "Sawyer") {
+      rows = this.db.prepare(`
+        SELECT * FROM notifications
+        WHERE created_at > ? AND (target_profile = ? OR target_profile = 'Family')
+        ORDER BY created_at ASC LIMIT 25
+      `).all(sinceMs, profile) as any[];
+    } else {
+      rows = this.db.prepare(`
+        SELECT * FROM notifications
+        WHERE created_at > ? AND target_profile IN ('Camden', 'Sawyer', 'Family')
+        ORDER BY created_at ASC LIMIT 25
+      `).all(sinceMs) as any[];
+    }
+    return rows.map(r => ({
+      id: r.id,
+      targetProfile: r.target_profile,
+      title: r.title,
+      body: r.body,
+      tab: r.tab || "active",
+      createdAt: r.created_at
+    }));
   }
 
   close(): void {

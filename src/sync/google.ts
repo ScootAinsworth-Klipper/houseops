@@ -187,6 +187,16 @@ export function createGoogleTasksClient(config: {
           scriptRequest({ op: "list", tasklist }),
         delete: ({ tasklist = "@default", task }: { tasklist?: string; task: string }) =>
           scriptRequest({ op: "delete", tasklist, task })
+      },
+      drive: {
+        uploadPhoto: (filename: string, base64Data: string, mimeType: string = "image/jpeg") =>
+          scriptRequest({
+            op: "upload_photo",
+            folderName: "HouseOps Photos",
+            filename,
+            base64Data,
+            mimeType
+          })
       }
     };
   }

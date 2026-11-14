@@ -96,6 +96,18 @@ export async function runDaemonCycle(
         ? ticket.broadcast.speakers
         : ["All Rooms"];
 
+      const targetProfile = ticket.assignee || "Family";
+      if (triggeredStage === "overdue") {
+        db.pushNotification(targetProfile, `⚠️ Overdue: ${ticket.title}`, `${ticket.title} is now overdue! Please finish it.`, "active");
+        if (targetProfile !== "Dad") {
+          db.pushNotification("Dad", `⏳ Overdue (${targetProfile}): ${ticket.title}`, `${ticket.title} (${targetProfile}) is 15m overdue.`, "active");
+        }
+      } else if (triggeredStage === "15m_before") {
+        db.pushNotification(targetProfile, `⏰ Upcoming (15m): ${ticket.title}`, `${ticket.title} is coming up in 15 minutes.`, "active");
+      } else {
+        db.pushNotification(targetProfile, `⏰ Time for Chore: ${ticket.title}`, message, "active");
+      }
+
       await broadcastAnnouncement(message, speakers);
 
       // Record last announcement stage and time
@@ -157,6 +169,7 @@ export async function runDaemonCycle(
             t.nextScheduledAt = nextDate.toISOString();
             t.isFloated = false;
             db.completeTicketTransaction(t, audit);
+            db.pushNotification("Dad", `🎙️ ${actor} Completed Chore`, `${t.title} checked off via Google Home.`, "audit");
 
             const person = actor === "Family" ? "everyone" : actor;
             const confirmMsg = `Awesome! ${t.title} is marked complete. Great job, ${person}!`;
@@ -215,6 +228,7 @@ export async function runDaemonCycle(
             bestTicket.nextScheduledAt = nextDate.toISOString();
             bestTicket.isFloated = false;
             db.completeTicketTransaction(bestTicket, audit);
+            db.pushNotification("Dad", `🎙️ ${actor} Completed Chore`, `${bestTicket.title} — "${rawTitle}"`, "audit");
 
             // Clean up the temporary voice-added task & mark linked Google Task completed
             try { await gClient.tasks.delete({ tasklist: "@default", task: g.id }); } catch (_) {}
