@@ -61,7 +61,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
 
 if (process.argv[1]?.endsWith("server.ts") || process.argv[1]?.endsWith("server.js")) {
   const port = parseInt(process.env.PORT || "8088", 10);
-  buildServer().then(server => {
+  buildServer({ enableDaemon: true }).then(server => {
     server.listen({ port, host: "0.0.0.0" }, (err, address) => {
       if (err) {
         console.error("Server start error:", err);

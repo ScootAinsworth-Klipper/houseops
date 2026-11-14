@@ -109,19 +109,27 @@ export async function runDaemonCycle(db, options = {}) {
         try {
             const gClient = createGoogleTasksClient({ webappUrl, clientId, clientSecret, refreshToken });
             const currentTickets = db.getTickets();
-            // 3a. Push any Pending tickets that don't yet have a Google Task ID
+            // 3a. Push any Pending tickets that don't yet have a Google Task ID (or reuse existing task with matching Ticket ID in notes)
+            const listRes = await gClient.tasks.list({ tasklist: "@default" });
+            const gTasks = listRes.data?.items || [];
             for (const t of currentTickets) {
                 if (t.currentStatus === "Pending" && !t.googleTaskId) {
-                    const gId = await syncTicketToTasks(gClient, "@default", t);
-                    if (gId) {
-                        t.googleTaskId = gId;
+                    const existing = gTasks.find(g => g.status === "needsAction" && (g.notes || "").includes(`Ticket: ${t.id}`));
+                    if (existing) {
+                        t.googleTaskId = existing.id;
+                        await syncTicketToTasks(gClient, "@default", t);
                         db.saveTicket(t);
+                    }
+                    else {
+                        const gId = await syncTicketToTasks(gClient, "@default", t);
+                        if (gId) {
+                            t.googleTaskId = gId;
+                            db.saveTicket(t);
+                        }
                     }
                 }
             }
             // 3b. Poll Google Tasks for completions or voice-added phrases from Google Home speakers
-            const listRes = await gClient.tasks.list({ tasklist: "@default" });
-            const gTasks = listRes.data?.items || [];
             const linkedTaskIds = new Set(currentTickets.map(t => t.googleTaskId).filter(Boolean));
             for (const t of currentTickets) {
                 if (t.currentStatus === "Pending" && t.googleTaskId) {
