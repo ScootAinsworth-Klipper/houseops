@@ -177,7 +177,7 @@ def _boost_mp3_loudness(audio_path):
                 "-i",
                 audio_path,
                 "-af",
-                "acompressor=threshold=-22dB:ratio=4:attack=5:release=50,volume=11dB,alimiter=limit=-1.0dB",
+                "acompressor=threshold=-24dB:ratio=5:attack=4:release=40,volume=14dB,alimiter=limit=-0.5dB",
                 "-b:a",
                 "128k",
                 boosted_path,
@@ -245,14 +245,22 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
         orig_volumes = {}
         vol_lock = threading.Lock()
 
+        def _target_volume_for(cast_dev):
+            name_l = (cast_dev.name or "").lower()
+            model_l = (getattr(cast_dev, "model_name", "") or "").lower()
+            if "display" in name_l or "hub" in model_l:
+                return 1.0
+            return 0.80
+
         def ensure_announcement_volume(cast_dev):
             try:
                 if cast_dev.status is None:
                     time.sleep(0.2)
+                target_vol = _target_volume_for(cast_dev)
                 cur_vol = getattr(cast_dev.status, "volume_level", None) if cast_dev.status else None
                 cur_muted = bool(getattr(cast_dev.status, "volume_muted", False)) if cast_dev.status else False
                 needs_unmute = cur_muted
-                needs_boost = cur_vol is None or float(cur_vol) < ANNOUNCEMENT_MIN_VOLUME - 0.02
+                needs_boost = cur_vol is None or float(cur_vol) < target_vol - 0.02
                 if (needs_unmute or needs_boost) and cur_vol is not None:
                     with vol_lock:
                         if cast_dev not in orig_volumes:
@@ -260,9 +268,9 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
                 if needs_unmute:
                     cast_dev.set_volume_muted(False)
                 if needs_boost:
-                    cast_dev.set_volume(ANNOUNCEMENT_MIN_VOLUME)
+                    cast_dev.set_volume(target_vol)
                     time.sleep(0.2)
-                    print(f"[Announcer] Volume boosted on {cast_dev.name}: {cur_vol} -> {ANNOUNCEMENT_MIN_VOLUME:.2f}")
+                    print(f"[Announcer] Volume boosted on {cast_dev.name}: {cur_vol} -> {target_vol:.2f}")
             except Exception as ve:
                 print(f"[Announcer] Volume adjust error on {cast_dev.name}: {ve}", file=sys.stderr)
 
