@@ -330,7 +330,7 @@ export async function announceSchoolMenu(
   const { message, entry } = buildMenuSpeech(db, options);
   const speakers = options.speakers?.length
     ? options.speakers
-    : ["All Rooms"];
+    : ["Sawyer's Mini", "Living Room display", "Kitchen display"];
   const success = await broadcastAnnouncement(
     message,
     speakers,
