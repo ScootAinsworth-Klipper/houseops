@@ -612,16 +612,17 @@ function renderAudit(audits) {
       : "";
 
     const isAdmin = currentProfile === "Dad";
-    const adminActionsHtml = isAdmin
-      ? `<div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
-           <button class="btn" onclick="reopenTicket('${a.ticketId}', '${a.id}', false, this)" style="flex:0 0 auto; padding:5px 10px; font-size:11px; color:var(--yellow); border-color:rgba(234,179,8,0.4); background:var(--yellow-soft);">
-             ↩️ Mark Not Done
-           </button>
-           <button class="btn btn-nudge" onclick="reopenTicket('${a.ticketId}', '${a.id}', true, this)" style="flex:0 0 auto; padding:5px 10px; font-size:11px;">
-             📢 Send Back & Announce
-           </button>
-         </div>`
+    const adminSendBackBtn = isAdmin
+      ? `<button class="btn btn-nudge" onclick="reopenTicket('${a.ticketId}', '${a.id}', true, this)" style="flex:0 0 auto; padding:5px 10px; font-size:11px;">
+           📢 Send Back & Announce
+         </button>`
       : "";
+    const actionsHtml = `<div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+      <button class="btn" onclick="reopenTicket('${a.ticketId}', '${a.id}', false, this)" style="flex:0 0 auto; padding:5px 10px; font-size:11px; color:var(--yellow); border-color:rgba(234,179,8,0.4); background:var(--yellow-soft);">
+        ↩️ Mark Not Done
+      </button>
+      ${adminSendBackBtn}
+    </div>`;
 
     return `
       <div class="audit-item">
@@ -634,7 +635,7 @@ function renderAudit(audits) {
           </div>
           ${notesHtml}
           <div class="audit-meta" style="margin-top:4px;">Completed ${dateStr}</div>
-          ${adminActionsHtml}
+          ${actionsHtml}
         </div>
       </div>
     `;
@@ -701,7 +702,8 @@ async function reopenTicket(ticketId, auditId, announce, btn) {
             body: JSON.stringify({
               auditId: auditId || undefined,
               announce: Boolean(announce),
-              reason: reason || undefined
+              reason: reason || undefined,
+              actor: currentProfile
             })
           });
         } catch (_) {
@@ -713,7 +715,8 @@ async function reopenTicket(ticketId, auditId, announce, btn) {
             body: JSON.stringify({
               auditId: auditId || undefined,
               announce: Boolean(announce),
-              reason: reason || undefined
+              reason: reason || undefined,
+              actor: currentProfile
             })
           });
         }

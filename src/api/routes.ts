@@ -263,13 +263,13 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
     }
   );
 
-  // Reopen / Send Back a completed ticket (Admin undo or rejection)
+  // Reopen / Send Back a completed ticket (Admin undo/rejection or Kid self-reopen)
   app.post(
     "/api/tickets/:id/reopen",
     async (
       req: FastifyRequest<{
         Params: { id: string };
-        Body?: { auditId?: string; announce?: boolean; reason?: string };
+        Body?: { auditId?: string; announce?: boolean; reason?: string; actor?: string };
       }>,
       reply: FastifyReply
     ) => {
@@ -295,13 +295,23 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
 
       db.saveTicket(ticket);
 
+      const actor = req.body?.actor || "Dad";
       const reasonSuffix = req.body?.reason ? ` Note: "${req.body.reason}"` : "";
-      db.pushNotification(
-        ticket.assignee || "Family",
-        `↩️ Chore Sent Back: ${ticket.title}`,
-        `Dad checked "${ticket.title}" and sent it back.${reasonSuffix} Please make sure it is completely finished!`,
-        "active"
-      );
+      if (actor === "Dad") {
+        db.pushNotification(
+          ticket.assignee || "Family",
+          `↩️ Chore Sent Back: ${ticket.title}`,
+          `Dad checked "${ticket.title}" and sent it back.${reasonSuffix} Please make sure it is completely finished!`,
+          "active"
+        );
+      } else {
+        db.pushNotification(
+          "Dad",
+          `↩️ ${actor} Reopened Chore`,
+          `${actor} marked "${ticket.title}" as Not Done to finish working on it.`,
+          "active"
+        );
+      }
 
       let announced = false;
       if (req.body?.announce) {
