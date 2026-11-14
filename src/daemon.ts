@@ -7,6 +7,7 @@ import { CompletionRecord } from "./core/types.js";
 import { createGoogleTasksClient, syncTicketToTasks } from "./sync/google.js";
 import { isQuietHours, buildAnnouncementText, broadcastAnnouncement } from "../daemon/announcer_client.js";
 import { parseMenuVoiceQuery, announceSchoolMenu } from "./core/school_menu.js";
+import { checkSmartThingsVirtualSwitchTrigger } from "./sync/smartthings.js";
 
 export interface DaemonCycleOptions {
   now?: Date;
@@ -277,6 +278,7 @@ export async function runDaemonCycle(
 }
 
 let daemonTimer: NodeJS.Timeout | null = null;
+let smartthingsTimer: NodeJS.Timeout | null = null;
 let lastPhotoPruneAt = 0;
 
 export function pruneOldLocalPhotos(maxAgeDays: number = 30): number {
@@ -348,11 +350,36 @@ export function startDaemon(db: HouseOpsDatabase, intervalMs: number = 15000): v
   };
 
   daemonTimer = setTimeout(tick, 3000);
+
+  // Instant 1.5s SmartThings Virtual Switch watcher for silent voice triggers ("School Lunch")
+  const DEFAULT_LUNCH_SWITCH_ID = "42e78372-63a1-4bc0-bc1a-c219c22cbb2f";
+  if (!db.getSetting("smartthings_lunch_switch_id")) {
+    db.setSetting("smartthings_lunch_switch_id", DEFAULT_LUNCH_SWITCH_ID);
+  }
+  const stTick = async () => {
+    try {
+      const switchId = db.getSetting("smartthings_lunch_switch_id") || DEFAULT_LUNCH_SWITCH_ID;
+      if (switchId && (await checkSmartThingsVirtualSwitchTrigger(switchId))) {
+        const spoken = await announceSchoolMenu(db, { meal: "lunch", target: "auto", bypassQuietHours: true });
+        console.log(`[SmartThings] School Lunch switch triggered -> "${spoken.message}"`);
+      }
+    } catch (_) {
+    } finally {
+      if (smartthingsTimer !== null) {
+        smartthingsTimer = setTimeout(stTick, 1500);
+      }
+    }
+  };
+  smartthingsTimer = setTimeout(stTick, 2000);
 }
 
 export function stopDaemon(): void {
   if (daemonTimer) {
     clearTimeout(daemonTimer);
     daemonTimer = null;
+  }
+  if (smartthingsTimer) {
+    clearTimeout(smartthingsTimer);
+    smartthingsTimer = null;
   }
 }
