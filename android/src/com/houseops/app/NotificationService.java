@@ -1,5 +1,6 @@
 package com.scoot.houseops;
 
+import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -13,6 +14,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -25,9 +27,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class NotificationService extends Service {
-    public static final String CHANNEL_MONITOR = "houseops_monitor";
     public static final String CHANNEL_ALERTS = "houseops_alerts";
-    private static final int NOTIF_ID_ONGOING = 4001;
     private static int alertNotifId = 5000;
 
     private Handler handler;
@@ -44,26 +44,10 @@ public class NotificationService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        SharedPreferences prefs = getSharedPreferences("HouseOpsPrefs", Context.MODE_PRIVATE);
-        String profile = prefs.getString("user_profile", "Dad");
-        Notification ongoing = buildOngoingNotification(profile);
-        try {
-            if (Build.VERSION.SDK_INT >= 34) {
-                startForeground(NOTIF_ID_ONGOING, ongoing, 1); // FOREGROUND_SERVICE_TYPE_DATA_SYNC = 1
-            } else {
-                startForeground(NOTIF_ID_ONGOING, ongoing);
-            }
-        } catch (Exception e) {
-            try {
-                startForeground(NOTIF_ID_ONGOING, ongoing);
-            } catch (Exception ignored) {}
-        }
-
         if (!running) {
             running = true;
             scheduleNextPoll(1500);
         } else {
-            // Trigger an immediate poll when profile changes or service restarts
             if (executor != null && !executor.isShutdown()) {
                 executor.execute(new Runnable() {
                     @Override
@@ -73,7 +57,20 @@ public class NotificationService extends Service {
                 });
             }
         }
+        scheduleWatchdogAlarm();
         return START_STICKY;
+    }
+
+    private void scheduleWatchdogAlarm() {
+        try {
+            AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+            if (am == null) return;
+            Intent i = new Intent(this, NotificationService.class);
+            PendingIntent pi = PendingIntent.getService(
+                    this, 777, i, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            long triggerAt = SystemClock.elapsedRealtime() + 60000L;
+            am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi);
+        } catch (Exception ignored) {}
     }
 
     private void scheduleNextPoll(long delayMs) {
@@ -154,23 +151,6 @@ public class NotificationService extends Service {
         }
     }
 
-    private Notification buildOngoingNotification(String profile) {
-        Intent i = new Intent(this, MainActivity.class);
-        PendingIntent pi = PendingIntent.getActivity(this, 0, i, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        Notification.Builder b;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            b = new Notification.Builder(this, CHANNEL_MONITOR);
-        } else {
-            b = new Notification.Builder(this).setPriority(Notification.PRIORITY_MIN);
-        }
-        b.setContentTitle("HouseOps Active (" + profile + ")")
-         .setContentText("Connected to household chore & photo alerts")
-         .setSmallIcon(R.drawable.icon)
-         .setContentIntent(pi)
-         .setOngoing(true);
-        return b.build();
-    }
-
     private void sendAlertNotification(String title, String body, String tab) {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
@@ -202,11 +182,10 @@ public class NotificationService extends Service {
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm == null) return;
 
-            NotificationChannel monitor = new NotificationChannel(
-                    CHANNEL_MONITOR, "HouseOps Background Sync", NotificationManager.IMPORTANCE_MIN);
-            monitor.setDescription("Keeps device connected to Raspberry Pi chore alerts");
-            monitor.setShowBadge(false);
-            nm.createNotificationChannel(monitor);
+            // Delete the old ongoing channel if it existed from v1.0.5
+            try {
+                nm.deleteNotificationChannel("houseops_monitor");
+            } catch (Exception ignored) {}
 
             NotificationChannel alerts = new NotificationChannel(
                     CHANNEL_ALERTS, "HouseOps Chore & Photo Alerts", NotificationManager.IMPORTANCE_HIGH);
@@ -217,10 +196,17 @@ public class NotificationService extends Service {
     }
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        scheduleWatchdogAlarm();
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
     public void onDestroy() {
         running = false;
         if (handler != null) handler.removeCallbacksAndMessages(null);
         if (executor != null) executor.shutdownNow();
+        scheduleWatchdogAlarm();
         super.onDestroy();
     }
 
