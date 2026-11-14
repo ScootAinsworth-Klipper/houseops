@@ -810,14 +810,25 @@ function resizeImage(file, maxWidth, maxHeight) {
 }
 
 const TAB_ORDER = ["active", "calendar", "floated", "audit"];
+const TAB_PANE_IDS = {
+  active: "viewActive",
+  calendar: "viewCalendar",
+  floated: "viewFloated",
+  audit: "viewAudit"
+};
 
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
-  document.getElementById("viewActive").style.display = tab === "active" ? "grid" : "none";
-  document.getElementById("viewCalendar").style.display = tab === "calendar" ? "flex" : "none";
-  document.getElementById("viewFloated").style.display = tab === "floated" ? "grid" : "none";
-  document.getElementById("viewAudit").style.display = tab === "audit" ? "flex" : "none";
+  document.querySelectorAll(".tab-pane").forEach(p => {
+    p.classList.remove("active", "swipe-preview");
+    p.style.transition = "";
+    p.style.transform = "";
+    p.style.top = "";
+  });
+
+  const targetPane = document.getElementById(TAB_PANE_IDS[tab]);
+  if (targetPane) targetPane.classList.add("active");
 
   const filterBar = document.getElementById("dadFilterBar");
   if (filterBar) {
@@ -1135,36 +1146,180 @@ function setupPullToRefresh() {
   }, { passive: true });
 }
 
+function isSwipeIgnoredTarget(target) {
+  let el = target;
+  while (el && el !== document.body) {
+    if (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA") return true;
+    const style = window.getComputedStyle(el);
+    const ox = style.overflowX;
+    if ((ox === "auto" || ox === "scroll") && el.scrollWidth > el.clientWidth + 4) return true;
+    el = el.parentElement;
+  }
+  return false;
+}
+
 function setupSwipeNavigation() {
-  const content = document.getElementById("mainContent");
-  if (!content) return;
+  const container = document.getElementById("mainContent");
+  if (!container) return;
 
-  let touchStartX = 0;
-  let touchStartY = 0;
+  let startX = 0;
+  let startY = 0;
+  let lastX = 0;
+  let startTime = 0;
+  let tracking = false;
+  let lockedAxis = null;
+  let activePane = null;
+  let previewPane = null;
+  let previewDir = 0;
+  let currentIdx = -1;
+  let animTimer = null;
 
-  content.addEventListener("touchstart", (e) => {
-    if (e.touches.length !== 1) return;
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
+  function clearPaneStyles(el) {
+    if (!el) return;
+    el.classList.remove("swipe-preview");
+    el.style.transition = "";
+    el.style.transform = "";
+    el.style.top = "";
+  }
+
+  function resetSwipeState() {
+    clearPaneStyles(activePane);
+    clearPaneStyles(previewPane);
+    tracking = false;
+    lockedAxis = null;
+    activePane = null;
+    previewPane = null;
+    previewDir = 0;
+    currentIdx = -1;
+  }
+
+  container.addEventListener("touchstart", (e) => {
+    if (animTimer) { clearTimeout(animTimer); animTimer = null; resetSwipeState(); }
+    if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
+    if (document.querySelector(".modal-backdrop.open")) { tracking = false; return; }
+    if (isSwipeIgnoredTarget(e.target)) { tracking = false; return; }
+
+    activePane = document.getElementById(TAB_PANE_IDS[currentTab]);
+    if (!activePane) { tracking = false; return; }
+    currentIdx = TAB_ORDER.indexOf(currentTab);
+    if (currentIdx === -1) { tracking = false; return; }
+
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    lastX = startX;
+    startTime = Date.now();
+    lockedAxis = null;
+    previewPane = null;
+    previewDir = 0;
+    tracking = true;
   }, { passive: true });
 
-  content.addEventListener("touchend", (e) => {
-    if (!e.changedTouches || e.changedTouches.length !== 1) return;
-    const dx = e.changedTouches[0].clientX - touchStartX;
-    const dy = e.changedTouches[0].clientY - touchStartY;
+  container.addEventListener("touchmove", (e) => {
+    if (!tracking || !e.touches || e.touches.length !== 1) return;
+    const x = e.touches[0].clientX;
+    const y = e.touches[0].clientY;
+    const dx = x - startX;
+    const dy = y - startY;
+    lastX = x;
 
-    // Require clear horizontal swipe (> 65px and at least 1.8x more horizontal than vertical)
-    if (Math.abs(dx) > 65 && Math.abs(dx) > Math.abs(dy) * 1.8) {
-      const idx = TAB_ORDER.indexOf(currentTab);
-      if (dx < 0 && idx < TAB_ORDER.length - 1) {
-        // Swiped left -> go to next page on the right
-        switchTab(TAB_ORDER[idx + 1]);
-      } else if (dx > 0 && idx > 0) {
-        // Swiped right -> go to previous page on the left
-        switchTab(TAB_ORDER[idx - 1]);
+    if (!lockedAxis) {
+      if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+      if (Math.abs(dx) > Math.abs(dy) * 1.25) {
+        lockedAxis = "x";
+      } else {
+        lockedAxis = "y";
+        tracking = false;
+        return;
       }
     }
-  }, { passive: true });
+
+    if (lockedAxis === "x") {
+      if (e.cancelable) e.preventDefault();
+      const dir = dx < 0 ? 1 : -1;
+      const nextIdx = currentIdx + dir;
+      const w = container.clientWidth || window.innerWidth;
+
+      if (nextIdx < 0 || nextIdx >= TAB_ORDER.length) {
+        if (previewPane) { clearPaneStyles(previewPane); previewPane = null; previewDir = 0; }
+        activePane.style.transition = "none";
+        activePane.style.transform = `translate3d(${dx * 0.22}px, 0, 0)`;
+        return;
+      }
+
+      if (previewDir !== dir) {
+        if (previewPane) clearPaneStyles(previewPane);
+        const nextTab = TAB_ORDER[nextIdx];
+        if (nextTab === "audit") loadAuditLog();
+        previewPane = document.getElementById(TAB_PANE_IDS[nextTab]);
+        previewDir = dir;
+        if (previewPane) {
+          previewPane.classList.add("swipe-preview");
+          previewPane.style.top = (14 + container.scrollTop) + "px";
+        }
+      }
+
+      activePane.style.transition = "none";
+      activePane.style.transform = `translate3d(${dx}px, 0, 0)`;
+      if (previewPane) {
+        previewPane.style.transition = "none";
+        previewPane.style.transform = `translate3d(${dx + dir * w}px, 0, 0)`;
+      }
+    }
+  }, { passive: false });
+
+  function finishSwipe(cancelled) {
+    if (!tracking) return;
+    tracking = false;
+    if (lockedAxis !== "x" || !activePane) {
+      resetSwipeState();
+      return;
+    }
+
+    const dx = lastX - startX;
+    const dt = Date.now() - startTime;
+    const dir = dx < 0 ? 1 : -1;
+    const nextIdx = currentIdx + dir;
+    const w = container.clientWidth || window.innerWidth;
+    const canSwitch = !cancelled && nextIdx >= 0 && nextIdx < TAB_ORDER.length && previewPane &&
+      (Math.abs(dx) > w * 0.25 || (Math.abs(dx) > 45 && dt < 320));
+
+    const ease = "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)";
+    const curActive = activePane;
+    const curPreview = previewPane;
+
+    curActive.style.transition = ease;
+    if (curPreview) curPreview.style.transition = ease;
+
+    if (canSwitch) {
+      curActive.style.transform = `translate3d(${-dir * w}px, 0, 0)`;
+      curPreview.style.transform = "translate3d(0, 0, 0)";
+      const targetTab = TAB_ORDER[nextIdx];
+      animTimer = setTimeout(() => {
+        animTimer = null;
+        clearPaneStyles(curActive);
+        clearPaneStyles(curPreview);
+        switchTab(targetTab);
+        container.scrollTop = 0;
+        activePane = null;
+        previewPane = null;
+        lockedAxis = null;
+      }, 225);
+    } else {
+      curActive.style.transform = "translate3d(0, 0, 0)";
+      if (curPreview) curPreview.style.transform = `translate3d(${dir * w}px, 0, 0)`;
+      animTimer = setTimeout(() => {
+        animTimer = null;
+        clearPaneStyles(curActive);
+        clearPaneStyles(curPreview);
+        activePane = null;
+        previewPane = null;
+        lockedAxis = null;
+      }, 225);
+    }
+  }
+
+  container.addEventListener("touchend", () => finishSwipe(false), { passive: true });
+  container.addEventListener("touchcancel", () => finishSwipe(true), { passive: true });
 }
 
 window.addEventListener("DOMContentLoaded", () => {

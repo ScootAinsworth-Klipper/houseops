@@ -119,8 +119,36 @@ html, body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior-x: contain;
+  touch-action: pan-y;
+  contain: layout paint;
+  position: relative;
   padding: 14px;
   -webkit-overflow-scrolling: touch;
+}
+
+.tab-pane {
+  display: none !important;
+  will-change: transform;
+}
+.tab-pane.active {
+  display: flex !important;
+  flex-direction: column;
+}
+.tab-pane.grid-container.active {
+  display: grid !important;
+}
+.tab-pane.swipe-preview {
+  display: flex !important;
+  flex-direction: column;
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  pointer-events: none;
+}
+.tab-pane.grid-container.swipe-preview {
+  display: grid !important;
 }
 
 .grid-container {
