@@ -39,9 +39,8 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     root: staticDir,
     prefix: "/",
     cacheControl: false,
-    setHeaders: (res: any) => {
-      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-    }
+    etag: false,
+    lastModified: false
   });
 
   // Serve verified photos

@@ -25,9 +25,8 @@ export async function buildServer(options = {}) {
         root: staticDir,
         prefix: "/",
         cacheControl: false,
-        setHeaders: (res) => {
-            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-        }
+        etag: false,
+        lastModified: false
     });
     // Serve verified photos
     await app.register(fastifyStatic, {
