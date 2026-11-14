@@ -72,8 +72,8 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
         local_ip = get_local_ip()
         media_url = f"http://{local_ip}:{actual_port}/{filename}"
 
-        # Discover Cast devices quickly (3s mDNS window finds all 17 LAN speakers in ~5s)
-        chromecasts, browser = pychromecast.get_chromecasts(timeout=3)
+        # Discover Cast devices quickly (4s mDNS window)
+        chromecasts, browser = pychromecast.get_chromecasts(timeout=4)
         target_casts = []
 
         if speaker_name:
@@ -116,9 +116,21 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
             print("[Announcer] No Google Cast / Nest speakers discovered on local network.")
             return False
 
+        orig_volumes = {}
+
         def play_on_cast(cast_dev):
             try:
                 cast_dev.wait(timeout=5)
+                try:
+                    cur_vol = getattr(cast_dev.status, "volume_level", None)
+                    if cur_vol is not None:
+                        orig_volumes[cast_dev] = float(cur_vol)
+                        if float(cur_vol) < 0.72:
+                            cast_dev.set_volume(0.72)
+                            time.sleep(0.15)
+                except Exception:
+                    pass
+
                 mc = cast_dev.media_controller
                 mc.play_media(media_url, "audio/mp3")
                 mc.block_until_active(timeout=5)
@@ -134,8 +146,19 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
         for t in threads:
             t.join(timeout=8)
 
-        print(f"[Announcer] Playing '{text}' on {[c.name for c in target_casts]}")
-        time.sleep(7) # Allow speakers to finish streaming audio
+        # Wait long enough for full message playback based on character count
+        wait_secs = max(8.0, min(25.0, len(text) * 0.09 + 3.5))
+        print(f"[Announcer] Playing '{text}' on {[c.name for c in target_casts]} (hold {wait_secs:.1f}s)")
+        time.sleep(wait_secs)
+
+        # Restore previous speaker volumes so normal music levels stay unchanged
+        for cast_dev, prev_vol in orig_volumes.items():
+            try:
+                cast_dev.set_volume(prev_vol)
+            except Exception:
+                pass
+        if orig_volumes:
+            time.sleep(0.25)
         return True
     except Exception as e:
         print(f"[Announcer] Cast playback error: {e}", file=sys.stderr)

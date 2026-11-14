@@ -93,7 +93,7 @@ export async function broadcastAnnouncement(message, speakerName, scriptPath, by
                 resolved = true;
                 resolve(false);
             }
-        }, 30000);
+        }, 45000);
         const finish = (code) => {
             if (!resolved) {
                 resolved = true;
