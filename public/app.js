@@ -594,7 +594,10 @@ function renderAudit(audits) {
     const dateStr = `${d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} at ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
     const title = a.ticketTitle || a.ticketId;
     const thumb = a.photoPath
-      ? `<img src="${a.photoPath}" class="audit-thumb" onclick="openPhotoViewer('${a.photoPath}', '${escapeHtml(title).replace(/'/g, "\\'")}')" style="cursor:pointer;" title="Tap to expand photo">`
+      ? `<div style="position:relative; cursor:pointer; flex-shrink:0;" onclick="openPhotoViewer('${a.photoPath}', '${escapeHtml(title).replace(/'/g, "\\'")}')" title="Tap to view fullscreen & zoom">
+           <img src="${a.photoPath}" class="audit-thumb" style="display:block;">
+           <span style="position:absolute; bottom:3px; right:3px; background:rgba(0,0,0,0.78); color:#fff; font-size:10px; padding:1px 4px; border-radius:4px; border:1px solid rgba(255,255,255,0.2);">🔍</span>
+         </div>`
       : `<div class="audit-thumb" style="display:flex; align-items:center; justify-content:center; font-size:22px; background:var(--bg-card-alt); color:var(--green);">✓</div>`;
 
     const methodBadge = a.method === "Photo_Verified"
@@ -728,14 +731,125 @@ async function reopenTicket(ticketId, auditId, announce, btn) {
   });
 }
 
+let pzScale = 1;
+let pzX = 0;
+let pzY = 0;
+let pzInitialized = false;
+
+function updatePhotoTransform(animate = false) {
+  const img = document.getElementById("photoViewerImg");
+  const badge = document.getElementById("photoZoomBadge");
+  if (!img) return;
+  img.style.transition = animate ? "transform 180ms ease-out" : "none";
+  img.style.transform = `translate3d(${pzX}px, ${pzY}px, 0) scale(${pzScale})`;
+  if (badge) badge.innerText = `${Math.round(pzScale * 100)}%`;
+}
+
+function resetPhotoZoom(animate = true) {
+  pzScale = 1;
+  pzX = 0;
+  pzY = 0;
+  updatePhotoTransform(animate);
+}
+
+function adjustPhotoZoom(delta) {
+  pzScale = Math.min(6, Math.max(1, +(pzScale + delta).toFixed(2)));
+  if (pzScale === 1) {
+    pzX = 0;
+    pzY = 0;
+  }
+  updatePhotoTransform(true);
+}
+
+function setupPhotoZoomEngine() {
+  if (pzInitialized) return;
+  const stage = document.getElementById("photoStage");
+  if (!stage) return;
+  pzInitialized = true;
+
+  let isDragging = false;
+  let startX = 0;
+  let startY = 0;
+  let initialPinchDist = 0;
+  let initialScale = 1;
+  let lastTapTime = 0;
+
+  stage.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.35 : -0.35;
+    adjustPhotoZoom(delta);
+  }, { passive: false });
+
+  stage.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 2) {
+      isDragging = false;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      initialPinchDist = Math.hypot(dx, dy);
+      initialScale = pzScale;
+    } else if (e.touches.length === 1) {
+      const now = Date.now();
+      if (now - lastTapTime < 280) {
+        // Double-tap toggles between 1x and 2.5x zoom
+        if (pzScale > 1.1) {
+          resetPhotoZoom(true);
+        } else {
+          pzScale = 2.5;
+          pzX = 0;
+          pzY = 0;
+          updatePhotoTransform(true);
+        }
+        lastTapTime = 0;
+        return;
+      }
+      lastTapTime = now;
+
+      if (pzScale > 1) {
+        isDragging = true;
+        startX = e.touches[0].clientX - pzX;
+        startY = e.touches[0].clientY - pzY;
+      }
+    }
+  }, { passive: true });
+
+  stage.addEventListener("touchmove", (e) => {
+    if (e.touches.length === 2 && initialPinchDist > 0) {
+      if (e.cancelable) e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const ratio = dist / initialPinchDist;
+      pzScale = Math.min(6, Math.max(1, initialScale * ratio));
+      if (pzScale === 1) {
+        pzX = 0;
+        pzY = 0;
+      }
+      updatePhotoTransform(false);
+    } else if (e.touches.length === 1 && isDragging && pzScale > 1) {
+      if (e.cancelable) e.preventDefault();
+      pzX = e.touches[0].clientX - startX;
+      pzY = e.touches[0].clientY - startY;
+      updatePhotoTransform(false);
+    }
+  }, { passive: false });
+
+  stage.addEventListener("touchend", (e) => {
+    if (e.touches.length < 2) initialPinchDist = 0;
+    if (e.touches.length === 0) isDragging = false;
+  }, { passive: true });
+}
+
 function openPhotoViewer(src, title) {
+  setupPhotoZoomEngine();
   document.getElementById("photoViewerImg").src = src;
   document.getElementById("photoViewerTitle").innerText = `📸 Proof: ${title}`;
+  resetPhotoZoom(false);
   document.getElementById("photoViewerModal").classList.add("open");
 }
 
 function closePhotoViewer() {
   document.getElementById("photoViewerModal").classList.remove("open");
+  resetPhotoZoom(false);
 }
 
 let activeRecognition = null;
