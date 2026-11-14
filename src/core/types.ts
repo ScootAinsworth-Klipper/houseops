@@ -50,6 +50,7 @@ export interface HouseTicket {
   category: TicketCategory;
   priority: TicketPriority;
   assignee?: string;
+  requirePhoto?: boolean;
   broadcast?: BroadcastConfig;
   recurrence: RecurrenceConfig;
   preferredWindow: PreferredWindow;

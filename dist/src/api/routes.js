@@ -29,6 +29,7 @@ export function registerRoutes(app, db, photoDir) {
             currentStatus: body.currentStatus || "Pending",
             nextScheduledAt: body.nextScheduledAt || new Date().toISOString(),
             isFloated: false,
+            requirePhoto: Boolean(body.requirePhoto),
             googleCalendarEventId: body.googleCalendarEventId,
             googleTaskId: body.googleTaskId
         };
@@ -175,6 +176,7 @@ export function registerRoutes(app, db, photoDir) {
         }
         const completedAt = new Date().toISOString();
         const method = req.body?.method || "Quick_Complete";
+        const actor = req.body?.actor || ticket.assignee || "Dad";
         // 1. Prepare completion audit with UUID
         const audit = {
             id: `AUDIT-${crypto.randomUUID()}`,
@@ -183,7 +185,7 @@ export function registerRoutes(app, db, photoDir) {
             method,
             photoPath: req.body?.photoPath,
             notes: req.body?.notes,
-            actor: "Father"
+            actor
         };
         // 2. Calculate next occurrence
         const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
@@ -218,13 +220,14 @@ export function registerRoutes(app, db, photoDir) {
             writeStream.on("error", reject);
         });
         const completedAt = new Date().toISOString();
+        const actor = req.query?.actor || ticket.assignee || "Dad";
         const audit = {
             id: `AUDIT-${crypto.randomUUID()}`,
             ticketId: ticket.id,
             completedAt,
             method: "Photo_Verified",
             photoPath: `/photos/${filename}`,
-            actor: "Father"
+            actor
         };
         const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
         ticket.currentStatus = "Verified";

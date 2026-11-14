@@ -36,6 +36,7 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
       currentStatus: body.currentStatus || "Pending",
       nextScheduledAt: body.nextScheduledAt || new Date().toISOString(),
       isFloated: false,
+      requirePhoto: Boolean(body.requirePhoto),
       googleCalendarEventId: body.googleCalendarEventId,
       googleTaskId: body.googleTaskId
     };
@@ -201,7 +202,7 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
     async (
       req: FastifyRequest<{
         Params: { id: string };
-        Body: { method?: CompletionMethod; notes?: string; photoPath?: string };
+        Body: { method?: CompletionMethod; notes?: string; photoPath?: string; actor?: string };
       }>,
       reply: FastifyReply
     ) => {
@@ -216,6 +217,7 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
 
       const completedAt = new Date().toISOString();
       const method = req.body?.method || "Quick_Complete";
+      const actor = req.body?.actor || ticket.assignee || "Dad";
 
       // 1. Prepare completion audit with UUID
       const audit: CompletionRecord = {
@@ -225,7 +227,7 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
         method,
         photoPath: req.body?.photoPath,
         notes: req.body?.notes,
-        actor: "Father"
+        actor
       };
 
       // 2. Calculate next occurrence
@@ -245,7 +247,7 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
   );
 
   // Upload photo verification proof
-  app.post("/api/tickets/:id/photo", async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+  app.post("/api/tickets/:id/photo", async (req: FastifyRequest<{ Params: { id: string }; Querystring: { actor?: string } }>, reply: FastifyReply) => {
     const { id } = req.params;
     const ticket = db.getTicket(id);
     if (!ticket) return reply.status(404).send({ error: "Ticket not found" });
@@ -269,13 +271,14 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
     });
 
     const completedAt = new Date().toISOString();
+    const actor = req.query?.actor || ticket.assignee || "Dad";
     const audit: CompletionRecord = {
       id: `AUDIT-${crypto.randomUUID()}`,
       ticketId: ticket.id,
       completedAt,
       method: "Photo_Verified",
       photoPath: `/photos/${filename}`,
-      actor: "Father"
+      actor
     };
 
     const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));

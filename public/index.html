@@ -18,13 +18,16 @@
       <span>⚡ HouseOps</span>
     </div>
     <div class="top-pills">
+      <button class="btn" id="btnProfileSwitch" onclick="openProfileModal()" style="padding:6px 10px; font-size:12px; background:var(--bg-card-alt); border-color:var(--border);" title="Switch Device User Profile">
+        👨 Dad
+      </button>
       <button class="btn" onclick="openVoiceModal()" style="padding:6px 10px; font-size:12px; background:var(--bg-card-alt); border-color:var(--border);" title="Voice Check-Off">
         🎙️ Voice
       </button>
       <div class="status-chip" id="chipQuiet">
         <span>🌙</span> Quiet: Off
       </div>
-      <button class="btn btn-primary" onclick="openNewTicketModal()" style="padding:6px 12px; font-size:12px;">
+      <button class="btn btn-primary" id="btnNewTask" onclick="openNewTicketModal()" style="padding:6px 12px; font-size:12px;">
         ➕ New Task
       </button>
     </div>
@@ -45,6 +48,16 @@
 
   <!-- Main Content -->
   <main class="main-content" id="mainContent">
+    <!-- Dad Admin Filter Bar -->
+    <div id="dadFilterBar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; align-items:center;">
+      <span style="font-size:11px; color:var(--text-muted); font-weight:600; margin-right:4px;">VIEW:</span>
+      <button type="button" class="speaker-chip active" data-filter="All" onclick="setDadFilter('All')">All Tasks</button>
+      <button type="button" class="speaker-chip" data-filter="Camden" onclick="setDadFilter('Camden')">👦 Camden</button>
+      <button type="button" class="speaker-chip" data-filter="Sawyer" onclick="setDadFilter('Sawyer')">👧 Sawyer</button>
+      <button type="button" class="speaker-chip" data-filter="Dad" onclick="setDadFilter('Dad')">👨 Dad</button>
+      <button type="button" class="speaker-chip" data-filter="Family" onclick="setDadFilter('Family')">👨‍👩‍👧‍👦 Family</button>
+    </div>
+
     <!-- Active Grid -->
     <div id="viewActive" class="grid-container"></div>
 
@@ -144,6 +157,15 @@
         <input type="number" class="form-input" id="inpIntervalDays" value="60" min="1">
       </div>
 
+      <div class="form-group">
+        <label>Verification Policy</label>
+        <div>
+          <button type="button" class="speaker-chip" id="chipRequirePhoto" onclick="this.classList.toggle('active')" style="width:100%; justify-content:center; padding:8px 12px; display:flex; align-items:center; gap:6px;">
+            📸 Require Photo Proof (Kids must take a photo to complete)
+          </button>
+        </div>
+      </div>
+
       <!-- Spoken Voice Reminders Section -->
       <div style="border-top:1px solid var(--border); padding-top:12px; margin-top:6px; display:flex; flex-direction:column; gap:10px;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -220,6 +242,43 @@
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
         <button class="btn" onclick="closeVoiceModal()">Cancel</button>
         <button class="btn btn-primary" id="btnVoiceSubmit" onclick="submitVoicePhrase()">✓ Complete Task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Device User Profile Modal -->
+  <div class="modal-backdrop" id="profileModal" onclick="if(event.target===this && localStorage.getItem('houseops_profile')) closeProfileModal()">
+    <div class="modal-card" style="max-width:380px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="font-size:16px;">👤 Who is using this device?</h3>
+        <button class="btn" id="btnCloseProfileModal" onclick="closeProfileModal()" style="flex:0; padding:4px 8px;">✖</button>
+      </div>
+      <div style="font-size:12px; color:var(--text-muted);">
+        Select your profile to personalize this device's tasks and permissions.
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:4px;">
+        <button class="btn" onclick="selectProfileOption('Camden')" style="justify-content:flex-start; padding:12px 14px; font-size:14px; background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca;">
+          👦 Camden's Device
+        </button>
+        <button class="btn" onclick="selectProfileOption('Sawyer')" style="justify-content:flex-start; padding:12px 14px; font-size:14px; background:#3b0764; color:#f5d0fe; border:1px solid #a855f7;">
+          👧 Sawyer's Device
+        </button>
+        <button class="btn" onclick="selectProfileOption('Family')" style="justify-content:flex-start; padding:12px 14px; font-size:14px; background:#451a03; color:#fcd34d; border:1px solid #d97706;">
+          👨‍👩‍👧‍👦 Shared Family Display
+        </button>
+        <button class="btn" onclick="showDadPinPrompt()" style="justify-content:space-between; padding:12px 14px; font-size:14px; background:#064e3b; color:#6ee7b7; border:1px solid #059669;">
+          <span>👨 Dad (Admin Mode)</span>
+          <span style="font-size:11px; opacity:0.85;">🔒 PIN</span>
+        </button>
+      </div>
+
+      <div id="dadPinBox" style="display:none; flex-direction:column; gap:8px; margin-top:8px; padding-top:10px; border-top:1px solid var(--border);">
+        <label style="font-size:12px; color:var(--text-muted); font-weight:600;">Enter Dad Admin PIN:</label>
+        <div style="display:flex; gap:8px;">
+          <input type="password" inputmode="numeric" maxlength="4" class="form-input" id="inpDadPin" placeholder="••••" style="text-align:center; font-size:18px; letter-spacing:6px;" onkeydown="if(event.key==='Enter') verifyDadPin()">
+          <button class="btn btn-primary" onclick="verifyDadPin()" style="flex:0 0 auto; padding:8px 16px;">Unlock</button>
+        </div>
+        <div id="dadPinError" style="font-size:12px; color:var(--red); display:none;">❌ Incorrect PIN.</div>
       </div>
     </div>
   </div>

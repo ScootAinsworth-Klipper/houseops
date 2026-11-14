@@ -1,5 +1,113 @@
 let tickets = [];
 let pendingPhotoTicketId = null;
+let currentProfile = localStorage.getItem("houseops_profile") || "Dad";
+let dadFilter = "All";
+let currentTab = "active";
+const DAD_PIN = "1986";
+
+function matchesProfileFilter(t) {
+  const assignee = t.assignee || "Dad";
+  if (currentProfile === "Camden" || currentProfile === "Sawyer") {
+    return assignee === currentProfile || assignee === "Family";
+  }
+  if (currentProfile === "Dad") {
+    return dadFilter === "All" || assignee === dadFilter;
+  }
+  return true; // Shared Family Display shows all tasks
+}
+
+function applyProfileUI() {
+  const btn = document.getElementById("btnProfileSwitch");
+  if (btn) {
+    if (currentProfile === "Camden") {
+      btn.innerHTML = "👦 Camden";
+      btn.style.background = "#1e1b4b";
+      btn.style.color = "#c7d2fe";
+      btn.style.borderColor = "#4338ca";
+    } else if (currentProfile === "Sawyer") {
+      btn.innerHTML = "👧 Sawyer";
+      btn.style.background = "#3b0764";
+      btn.style.color = "#f5d0fe";
+      btn.style.borderColor = "#a855f7";
+    } else if (currentProfile === "Family") {
+      btn.innerHTML = "👨‍👩‍👧‍👦 Shared";
+      btn.style.background = "#451a03";
+      btn.style.color = "#fcd34d";
+      btn.style.borderColor = "#d97706";
+    } else {
+      btn.innerHTML = "👨 Dad";
+      btn.style.background = "#064e3b";
+      btn.style.color = "#6ee7b7";
+      btn.style.borderColor = "#059669";
+    }
+  }
+
+  const btnNewTask = document.getElementById("btnNewTask");
+  if (btnNewTask) {
+    btnNewTask.style.display = currentProfile === "Dad" ? "inline-flex" : "none";
+  }
+
+  const filterBar = document.getElementById("dadFilterBar");
+  if (filterBar) {
+    filterBar.style.display = (currentProfile === "Dad" && currentTab !== "audit") ? "flex" : "none";
+  }
+
+  renderTickets();
+  updateCounts();
+}
+
+function setDadFilter(filterVal) {
+  dadFilter = filterVal;
+  document.querySelectorAll("#dadFilterBar .speaker-chip").forEach(chip => {
+    chip.classList.toggle("active", chip.dataset.filter === filterVal);
+  });
+  renderTickets();
+  updateCounts();
+}
+
+function openProfileModal(isFirstRun = false) {
+  const closeBtn = document.getElementById("btnCloseProfileModal");
+  if (closeBtn) closeBtn.style.display = isFirstRun ? "none" : "inline-flex";
+  document.getElementById("dadPinBox").style.display = "none";
+  document.getElementById("dadPinError").style.display = "none";
+  document.getElementById("inpDadPin").value = "";
+  document.getElementById("profileModal").classList.add("open");
+}
+
+function closeProfileModal() {
+  document.getElementById("profileModal").classList.remove("open");
+}
+
+function selectProfileOption(profile) {
+  currentProfile = profile;
+  localStorage.setItem("houseops_profile", profile);
+  closeProfileModal();
+  applyProfileUI();
+}
+
+function showDadPinPrompt() {
+  if (currentProfile === "Dad" && localStorage.getItem("houseops_profile") === "Dad") {
+    closeProfileModal();
+    return;
+  }
+  const box = document.getElementById("dadPinBox");
+  const inp = document.getElementById("inpDadPin");
+  document.getElementById("dadPinError").style.display = "none";
+  inp.value = "";
+  box.style.display = "flex";
+  setTimeout(() => inp.focus(), 100);
+}
+
+function verifyDadPin() {
+  const pin = document.getElementById("inpDadPin").value.trim();
+  if (pin === DAD_PIN) {
+    selectProfileOption("Dad");
+  } else {
+    const err = document.getElementById("dadPinError");
+    err.style.display = "block";
+    document.getElementById("inpDadPin").value = "";
+  }
+}
 
 async function loadTickets() {
   try {
@@ -25,8 +133,9 @@ async function loadAuditLog() {
 }
 
 function updateCounts() {
-  const active = tickets.filter(t => t.recurrence.type === "OnDemand" || (t.currentStatus !== "Verified" && !t.isFloated)).length;
-  const floated = tickets.filter(t => t.recurrence.type !== "OnDemand" && t.currentStatus !== "Verified" && t.isFloated).length;
+  const visible = tickets.filter(matchesProfileFilter);
+  const active = visible.filter(t => t.recurrence.type === "OnDemand" || (t.currentStatus !== "Verified" && !t.isFloated)).length;
+  const floated = visible.filter(t => t.recurrence.type !== "OnDemand" && t.currentStatus !== "Verified" && t.isFloated).length;
   document.getElementById("countActive").innerText = active;
   document.getElementById("countFloated").innerText = floated;
 }
@@ -35,8 +144,9 @@ function renderTickets() {
   const activeGrid = document.getElementById("viewActive");
   const floatedGrid = document.getElementById("viewFloated");
 
-  const activeTickets = tickets.filter(t => t.recurrence.type === "OnDemand" || (t.currentStatus !== "Verified" && !t.isFloated));
-  const floatedTickets = tickets.filter(t => t.recurrence.type !== "OnDemand" && t.currentStatus !== "Verified" && t.isFloated);
+  const visible = tickets.filter(matchesProfileFilter);
+  const activeTickets = visible.filter(t => t.recurrence.type === "OnDemand" || (t.currentStatus !== "Verified" && !t.isFloated));
+  const floatedTickets = visible.filter(t => t.recurrence.type !== "OnDemand" && t.currentStatus !== "Verified" && t.isFloated);
 
   activeGrid.innerHTML = activeTickets.length
     ? activeTickets.map(renderTicketCard).join("")
@@ -52,6 +162,7 @@ function renderTicketCard(t) {
   const isP1 = t.priority === "P1-Urgent";
   const p1Badge = isP1 ? `<span class="badge badge-p1">P1 Urgent</span>` : "";
   const floatedBadge = t.isFloated ? `<span class="badge badge-floated">⏳ Floated</span>` : "";
+  const reqPhotoBadge = t.requirePhoto ? `<span class="badge" style="background:#064e3b; color:#6ee7b7; border:1px solid #059669;">📸 Photo Req</span>` : "";
   const assignee = t.assignee || "Dad";
   let assigneeBadge;
   if (assignee === "Sawyer") {
@@ -90,6 +201,18 @@ function renderTicketCard(t) {
     schedDisplay = `<span>🕒</span> Window: ${dateStr} at ${timeStr} (${t.preferredWindow.durationMinutes}m)`;
   }
 
+  const isAdmin = currentProfile === "Dad";
+  const mustUsePhoto = !isAdmin && Boolean(t.requirePhoto);
+  const doneBtnHtml = mustUsePhoto
+    ? ""
+    : `<button class="btn btn-done" onclick="quickCompleteTicket('${t.id}')">✓ Done</button>`;
+  const nudgeBtnHtml = isAdmin
+    ? `<button class="btn btn-nudge" onclick="nudgeTicket('${t.id}', this)" title="Broadcast voice reminder right now">📢 Nudge</button>`
+    : "";
+  const editBtnHtml = isAdmin
+    ? `<button class="btn" onclick="openEditTicketModal('${t.id}')" style="flex:0; padding:8px 10px; background:var(--bg-card-alt); border-color:var(--border);" title="Edit Task">✏️</button>`
+    : "";
+
   return `
     <div class="ticket-card ${t.isFloated ? "floated" : ""} ${isP1 ? "p1" : ""}" id="card-${t.id}">
       <div class="ticket-header">
@@ -100,6 +223,7 @@ function renderTicketCard(t) {
         ${assigneeBadge}
         ${p1Badge}
         ${floatedBadge}
+        ${reqPhotoBadge}
         <span class="badge badge-general">${recLabel}</span>
       </div>
       <div class="ticket-schedule">
@@ -110,25 +234,17 @@ function renderTicketCard(t) {
           ? `<button class="btn btn-nudge" onclick="nudgeTicket('${t.id}', this)" title="Broadcast voice reminder right now">
                📢 Broadcast Now
              </button>
-             <button class="btn btn-done" onclick="quickCompleteTicket('${t.id}')">
-               ✓ Done
-             </button>
+             ${doneBtnHtml}
              <button class="btn btn-verify" onclick="triggerCameraCapture('${t.id}')">
                📸 Proof
              </button>`
           : `<button class="btn btn-verify" onclick="triggerCameraCapture('${t.id}')">
                📸 Verify
              </button>
-             <button class="btn btn-done" onclick="quickCompleteTicket('${t.id}')">
-               ✓ Done
-             </button>
-             <button class="btn btn-nudge" onclick="nudgeTicket('${t.id}', this)" title="Broadcast voice reminder right now">
-               📢 Nudge
-             </button>`
+             ${doneBtnHtml}
+             ${nudgeBtnHtml}`
         }
-        <button class="btn" onclick="openEditTicketModal('${t.id}')" style="flex:0; padding:8px 10px; background:var(--bg-card-alt); border-color:var(--border);" title="Edit Task">
-          ✏️
-        </button>
+        ${editBtnHtml}
       </div>
     </div>
   `;
@@ -155,7 +271,7 @@ function renderAudit(audits) {
       ? `<span class="badge" style="background:#1e1b4b; color:#c7d2fe; border:1px solid #4338ca;">🎙️ Google Assistant</span>`
       : `<span class="badge" style="background:var(--bg-card-alt); color:var(--text-muted); border:1px solid var(--border);">✓ In-App Done</span>`;
 
-    const assignee = a.ticketAssignee || a.actor || "Family";
+    const assignee = a.actor && a.actor !== "Father" ? a.actor : (a.ticketAssignee || "Family");
     const notesHtml = a.notes
       ? `<div style="margin-top:5px; font-size:12px; color:#e2e8f0; background:rgba(255,255,255,0.05); padding:5px 8px; border-radius:6px; border-left:2px solid var(--accent);">${escapeHtml(a.notes)}</div>`
       : "";
@@ -249,7 +365,7 @@ async function submitVoicePhrase() {
     const res = await fetch("/api/voice", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text, actor: currentProfile })
     });
     const data = await res.json();
     if (!res.ok) {
@@ -293,7 +409,7 @@ async function handlePhotoCaptured(input) {
     const formData = new FormData();
     formData.append("photo", resizedBlob, "proof.jpg");
 
-    const res = await fetch(`/api/tickets/${ticketId}/photo`, {
+    const res = await fetch(`/api/tickets/${ticketId}/photo?actor=${encodeURIComponent(currentProfile)}`, {
       method: "POST",
       body: formData
     });
@@ -311,7 +427,7 @@ async function quickCompleteTicket(ticketId) {
     const res = await fetch(`/api/tickets/${ticketId}/complete`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ method: "Quick_Complete" })
+      body: JSON.stringify({ method: "Quick_Complete", actor: currentProfile })
     });
     if (!res.ok) throw new Error("Complete failed");
     await loadTickets();
@@ -378,10 +494,16 @@ function resizeImage(file, maxWidth, maxHeight) {
 }
 
 function switchTab(tab) {
+  currentTab = tab;
   document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
   document.getElementById("viewActive").style.display = tab === "active" ? "grid" : "none";
   document.getElementById("viewFloated").style.display = tab === "floated" ? "grid" : "none";
   document.getElementById("viewAudit").style.display = tab === "audit" ? "flex" : "none";
+
+  const filterBar = document.getElementById("dadFilterBar");
+  if (filterBar) {
+    filterBar.style.display = (currentProfile === "Dad" && tab !== "audit") ? "flex" : "none";
+  }
 
   if (tab === "active") document.getElementById("tabBtnActive").classList.add("active");
   if (tab === "floated") document.getElementById("tabBtnFloated").classList.add("active");
@@ -403,6 +525,7 @@ function openNewTicketModal() {
   document.getElementById("inpTime").value = "06:15";
   document.getElementById("inpRecurrence").value = "Weekdays";
   toggleRecurrenceOptions("Weekdays");
+  document.getElementById("chipRequirePhoto").classList.remove("active");
   document.querySelectorAll("#grpDaysOfWeek .day-chip").forEach(c => c.classList.remove("active"));
   document.querySelectorAll("#timingChips .speaker-chip").forEach(c => {
     c.classList.toggle("active", c.dataset.stage === "exact" || c.dataset.stage === "overdue");
@@ -434,6 +557,7 @@ function openEditTicketModal(ticketId) {
 
   document.getElementById("inpRecurrence").value = t.recurrence.type;
   toggleRecurrenceOptions(t.recurrence.type);
+  document.getElementById("chipRequirePhoto").classList.toggle("active", Boolean(t.requirePhoto));
 
   if (t.recurrence.intervalDays) {
     document.getElementById("inpIntervalDays").value = t.recurrence.intervalDays;
@@ -582,12 +706,15 @@ async function submitNewTicket() {
     ? { stages: activeStages, speakers, customMessage }
     : undefined;
 
+  const requirePhoto = document.getElementById("chipRequirePhoto").classList.contains("active");
+
   const payload = {
     id: editId,
     title,
     category,
     priority,
     assignee,
+    requirePhoto,
     broadcast,
     recurrence: {
       type: recType,
@@ -681,6 +808,10 @@ function setupPullToRefresh() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  if (!localStorage.getItem("houseops_profile")) {
+    openProfileModal(true);
+  }
+  applyProfileUI();
   loadTickets();
   setupPullToRefresh();
   setInterval(loadTickets, 30000); // 30s auto-refresh

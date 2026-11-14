@@ -66,6 +66,7 @@ export class HouseOpsDatabase {
     try { this.db.exec("ALTER TABLE tickets ADD COLUMN days_of_week TEXT"); } catch (_) {}
     try { this.db.exec("ALTER TABLE tickets ADD COLUMN assignee TEXT NOT NULL DEFAULT 'Dad'"); } catch (_) {}
     try { this.db.exec("ALTER TABLE tickets ADD COLUMN broadcast TEXT"); } catch (_) {}
+    try { this.db.exec("ALTER TABLE tickets ADD COLUMN require_photo INTEGER NOT NULL DEFAULT 0"); } catch (_) {}
     try { this.db.exec("UPDATE tickets SET assignee = 'Camden' WHERE assignee = 'Son'"); } catch (_) {}
   }
 
@@ -74,11 +75,11 @@ export class HouseOpsDatabase {
       INSERT INTO tickets (
         id, title, category, priority, assignee, recurrence_type, recurrence_interval_days,
         days_of_week, recurrence_base_on_completion, start_hour, start_minute, duration_minutes, current_status,
-        last_completed_at, next_scheduled_at, is_floated, google_calendar_event_id, google_task_id, broadcast, updated_at
+        last_completed_at, next_scheduled_at, is_floated, google_calendar_event_id, google_task_id, broadcast, require_photo, updated_at
       ) VALUES (
         @id, @title, @category, @priority, @assignee, @recurrence_type, @recurrence_interval_days,
         @days_of_week, @recurrence_base_on_completion, @start_hour, @start_minute, @duration_minutes, @current_status,
-        @last_completed_at, @next_scheduled_at, @is_floated, @google_calendar_event_id, @google_task_id, @broadcast, datetime('now')
+        @last_completed_at, @next_scheduled_at, @is_floated, @google_calendar_event_id, @google_task_id, @broadcast, @require_photo, datetime('now')
       )
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
@@ -99,6 +100,7 @@ export class HouseOpsDatabase {
         google_calendar_event_id = excluded.google_calendar_event_id,
         google_task_id = excluded.google_task_id,
         broadcast = excluded.broadcast,
+        require_photo = excluded.require_photo,
         updated_at = datetime('now')
     `);
 
@@ -121,7 +123,8 @@ export class HouseOpsDatabase {
       is_floated: ticket.isFloated ? 1 : 0,
       google_calendar_event_id: ticket.googleCalendarEventId || null,
       google_task_id: ticket.googleTaskId || null,
-      broadcast: ticket.broadcast ? JSON.stringify(ticket.broadcast) : null
+      broadcast: ticket.broadcast ? JSON.stringify(ticket.broadcast) : null,
+      require_photo: ticket.requirePhoto ? 1 : 0
     });
   }
 
@@ -266,6 +269,7 @@ export class HouseOpsDatabase {
       lastCompletedAt: row.last_completed_at || undefined,
       nextScheduledAt: row.next_scheduled_at,
       isFloated: row.is_floated === 1,
+      requirePhoto: row.require_photo === 1,
       googleCalendarEventId: row.google_calendar_event_id || undefined,
       googleTaskId: row.google_task_id || undefined
     };
