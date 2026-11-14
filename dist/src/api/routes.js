@@ -256,15 +256,18 @@ export function registerRoutes(app, db, photoDir) {
         const ok = await broadcastAnnouncement(msg, speaker);
         return reply.send({ success: ok, message: msg, speaker });
     });
-    // Google Tasks OAuth Status
+    // Google Tasks OAuth / Bridge Status
     app.get("/api/google/status", async (_req, reply) => {
         const hasRefresh = Boolean(db.getSetting("google_refresh_token"));
+        const hasWebapp = Boolean(db.getSetting("google_webapp_url"));
         const clientId = db.getSetting("google_client_id");
-        return reply.send({ connected: hasRefresh, hasClientConfig: Boolean(clientId) });
+        return reply.send({ connected: hasRefresh || hasWebapp, hasClientConfig: Boolean(clientId) });
     });
-    // Save Google OAuth Credentials / Refresh Token directly
+    // Save Google OAuth Credentials / Refresh Token or Apps Script WebApp URL directly
     app.post("/api/google/auth", async (req, reply) => {
-        const { clientId, clientSecret, refreshToken } = req.body || {};
+        const { webappUrl, clientId, clientSecret, refreshToken } = req.body || {};
+        if (webappUrl)
+            db.setSetting("google_webapp_url", webappUrl.trim());
         if (clientId)
             db.setSetting("google_client_id", clientId.trim());
         if (clientSecret)
@@ -273,6 +276,7 @@ export function registerRoutes(app, db, photoDir) {
             db.setSetting("google_refresh_token", refreshToken.trim());
         // Trigger immediate sync
         await runDaemonCycle(db);
-        return reply.send({ success: true, connected: Boolean(db.getSetting("google_refresh_token")) });
+        const isConnected = Boolean(db.getSetting("google_refresh_token") || db.getSetting("google_webapp_url"));
+        return reply.send({ success: true, connected: isConnected });
     });
 }

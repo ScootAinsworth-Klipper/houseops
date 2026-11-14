@@ -111,13 +111,14 @@ export async function runDaemonCycle(
   }
 
   // 3. Google Tasks 2-Way Sync & Standalone Google Home Voice Check-Off Poller
+  const webappUrl = db.getSetting("google_webapp_url");
   const clientId = db.getSetting("google_client_id");
   const clientSecret = db.getSetting("google_client_secret");
   const refreshToken = db.getSetting("google_refresh_token");
 
-  if (clientId && clientSecret && refreshToken) {
+  if (webappUrl || (clientId && clientSecret && refreshToken)) {
     try {
-      const gClient = createGoogleTasksClient({ clientId, clientSecret, refreshToken });
+      const gClient = createGoogleTasksClient({ webappUrl, clientId, clientSecret, refreshToken });
       const currentTickets = db.getTickets();
 
       // 3a. Push any Pending tickets that don't yet have a Google Task ID

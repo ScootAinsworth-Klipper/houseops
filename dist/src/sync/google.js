@@ -117,6 +117,30 @@ let cachedTokenExpiry = 0;
  * Creates a lightweight Google Tasks v1 REST API client using Node's built-in fetch.
  */
 export function createGoogleTasksClient(config) {
+    if (config.webappUrl) {
+        const url = config.webappUrl;
+        async function scriptRequest(payload) {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                redirect: "follow"
+            });
+            if (!res.ok) {
+                throw new Error(`Apps Script request failed (${res.status})`);
+            }
+            return { data: await res.json() };
+        }
+        return {
+            tasks: {
+                insert: ({ tasklist = "@default", requestBody }) => scriptRequest({ op: "insert", tasklist, body: requestBody }),
+                patch: ({ tasklist = "@default", task, requestBody }) => scriptRequest({ op: "patch", tasklist, task, body: requestBody }),
+                get: ({ tasklist = "@default", task }) => scriptRequest({ op: "get", tasklist, task }),
+                list: ({ tasklist = "@default" } = {}) => scriptRequest({ op: "list", tasklist }),
+                delete: ({ tasklist = "@default", task }) => scriptRequest({ op: "delete", tasklist, task })
+            }
+        };
+    }
     async function getAccessToken() {
         if (cachedAccessToken && Date.now() < cachedTokenExpiry - 60_000) {
             return cachedAccessToken;
@@ -125,9 +149,9 @@ export function createGoogleTasksClient(config) {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({
-                client_id: config.clientId,
-                client_secret: config.clientSecret,
-                refresh_token: config.refreshToken,
+                client_id: config.clientId || "",
+                client_secret: config.clientSecret || "",
+                refresh_token: config.refreshToken || "",
                 grant_type: "refresh_token"
             })
         });
