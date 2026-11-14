@@ -167,11 +167,13 @@ export async function runDaemonCycle(
       }
 
       // 3c. Check unlinked voice tasks ("Hey Google, add a task: Camden fed the dogs")
+      // Only intercept tasks that explicitly express chore completion so regular personal Google Tasks are never touched!
+      const completionMarkers = /\b(done|finished|complete|completed|did|fed|swapped|cleaned|picked up|unloaded|loaded|sorted|gathered|wiped|took out|checked off|houseops)\b/i;
       const stopWords = new Set(["the", "a", "an", "to", "in", "on", "for", "of", "is", "are", "was", "were", "done", "finished", "complete", "completed", "did", "just", "i", "we", "he", "she", "camden", "sawyer", "dad", "please", "now", "right", "task", "chore", "with", "out", "up"]);
       for (const g of gTasks) {
         if (g.status === "needsAction" && !linkedTaskIds.has(g.id) && !(g.notes || "").includes("Ticket: TICK-")) {
           const rawTitle = (g.title || "").trim();
-          if (!rawTitle) continue;
+          if (!rawTitle || !completionMarkers.test(rawTitle)) continue;
           const lower = rawTitle.toLowerCase();
           const spokenWords = lower.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w: string) => w.length >= 2);
 
