@@ -634,28 +634,79 @@ function renderAudit(audits) {
   }).join("");
 }
 
+let pendingConfirmCallback = null;
+
+function openConfirmModal({ title, message, confirmText = "Confirm", confirmClass = "btn-primary", confirmStyle = "", showReasonInput = false, onConfirm }) {
+  document.getElementById("confirmModalTitle").innerText = title;
+  document.getElementById("confirmModalMessage").innerText = message;
+  const btn = document.getElementById("btnConfirmAction");
+  btn.className = `btn ${confirmClass}`;
+  btn.style.cssText = confirmStyle;
+  btn.innerText = confirmText;
+
+  const reasonGroup = document.getElementById("confirmReasonGroup");
+  const reasonInp = document.getElementById("inpConfirmReason");
+  reasonInp.value = "";
+  reasonGroup.style.display = showReasonInput ? "flex" : "none";
+
+  pendingConfirmCallback = onConfirm;
+  document.getElementById("confirmActionModal").classList.add("open");
+}
+
+function closeConfirmModal() {
+  document.getElementById("confirmActionModal").classList.remove("open");
+  pendingConfirmCallback = null;
+}
+
+async function executeConfirmedAction() {
+  const cb = pendingConfirmCallback;
+  const reason = document.getElementById("inpConfirmReason").value.trim();
+  closeConfirmModal();
+  if (typeof cb === "function") {
+    await cb(reason);
+  }
+}
+
 async function reopenTicket(ticketId, auditId, announce, btn) {
-  const original = btn ? btn.innerText : "";
-  if (btn) {
-    btn.disabled = true;
-    btn.innerText = announce ? "⏳ Sending Back..." : "⏳ Reopening...";
-  }
-  try {
-    const res = await fetch(`/api/tickets/${ticketId}/reopen`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ auditId: auditId || undefined, announce: Boolean(announce) })
-    });
-    if (!res.ok) throw new Error("Failed to reopen task");
-    await loadTickets();
-    await loadAuditLog();
-  } catch (e) {
-    alert("Error reopening task: " + e.message);
-    if (btn) {
-      btn.disabled = false;
-      btn.innerText = original;
+  const t = tickets.find(x => x.id === ticketId);
+  const title = t ? t.title : ticketId;
+
+  openConfirmModal({
+    title: announce ? "📢 Send Back & Announce?" : "↩️ Mark Task Not Done?",
+    message: announce
+      ? `Put "${title}" back into Active Work Orders and announce over the speakers that it needs to be finished?`
+      : `Put "${title}" back into Active Work Orders for today?`,
+    confirmText: announce ? "📢 Send Back" : "↩️ Mark Not Done",
+    confirmClass: announce ? "btn-nudge" : "btn-primary",
+    showReasonInput: Boolean(announce),
+    onConfirm: async (reason) => {
+      const original = btn ? btn.innerText : "";
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = announce ? "⏳ Sending Back..." : "⏳ Reopening...";
+      }
+      try {
+        const res = await fetch(`/api/tickets/${ticketId}/reopen`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            auditId: auditId || undefined,
+            announce: Boolean(announce),
+            reason: reason || undefined
+          })
+        });
+        if (!res.ok) throw new Error("Failed to reopen task");
+        await loadTickets();
+        await loadAuditLog();
+      } catch (e) {
+        alert("Error reopening task: " + e.message);
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = original;
+        }
+      }
     }
-  }
+  });
 }
 
 function openPhotoViewer(src, title) {
@@ -786,45 +837,67 @@ async function handlePhotoCaptured(input) {
   }
 }
 
-// 1-Tap Quick Complete
-async function quickCompleteTicket(ticketId) {
-  try {
-    const res = await fetch(`/api/tickets/${ticketId}/complete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ method: "Quick_Complete", actor: currentProfile })
-    });
-    if (!res.ok) throw new Error("Complete failed");
-    await loadTickets();
-  } catch (e) {
-    alert("Error completing ticket: " + e.message);
-  }
+// Confirmed Quick Complete
+function quickCompleteTicket(ticketId) {
+  const t = tickets.find(x => x.id === ticketId);
+  const title = t ? t.title : "this task";
+
+  openConfirmModal({
+    title: "✓ Mark Task Complete?",
+    message: `Are you sure "${title}" is completely finished?`,
+    confirmText: "✓ Yes, It's Done!",
+    confirmClass: "btn-done",
+    onConfirm: async () => {
+      try {
+        const res = await fetch(`/api/tickets/${ticketId}/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ method: "Quick_Complete", actor: currentProfile })
+        });
+        if (!res.ok) throw new Error("Complete failed");
+        await loadTickets();
+      } catch (e) {
+        alert("Error completing ticket: " + e.message);
+      }
+    }
+  });
 }
 
-// 1-Tap Instant Voice Nudge / Broadcast
-async function nudgeTicket(ticketId, btn) {
+// Confirmed Instant Voice Nudge / Broadcast
+function nudgeTicket(ticketId, btn) {
+  const t = tickets.find(x => x.id === ticketId);
+  const title = t ? t.title : "this task";
   const original = btn ? btn.innerText : "";
   const isBroadcast = original.includes("Broadcast");
-  if (btn) {
-    btn.disabled = true;
-    btn.innerText = isBroadcast ? "⏳ Speaking..." : "⏳ Calling...";
-  }
 
-  try {
-    const res = await fetch(`/api/tickets/${ticketId}/nudge`, { method: "POST" });
-    const data = await res.json();
-    if (btn) btn.innerText = data.success ? (isBroadcast ? "✅ Broadcasted!" : "✅ Nudged!") : "❌ Error";
-    await loadTickets();
-  } catch (e) {
-    if (btn) btn.innerText = "❌ Failed";
-  }
+  openConfirmModal({
+    title: "📢 Broadcast Voice Alert?",
+    message: `Announce "${title}" over the house speakers right now?`,
+    confirmText: isBroadcast ? "📢 Broadcast Now" : "📢 Send Nudge",
+    confirmClass: "btn-nudge",
+    onConfirm: async () => {
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = isBroadcast ? "⏳ Speaking..." : "⏳ Calling...";
+      }
 
-  setTimeout(() => {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerText = original;
+      try {
+        const res = await fetch(`/api/tickets/${ticketId}/nudge`, { method: "POST" });
+        const data = await res.json();
+        if (btn) btn.innerText = data.success ? (isBroadcast ? "✅ Broadcasted!" : "✅ Nudged!") : "❌ Error";
+        await loadTickets();
+      } catch (e) {
+        if (btn) btn.innerText = "❌ Failed";
+      }
+
+      setTimeout(() => {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = original;
+        }
+      }, 3500);
     }
-  }, 3500);
+  });
 }
 
 function resizeImage(file, maxWidth, maxHeight) {
@@ -970,19 +1043,28 @@ function openEditTicketModal(ticketId) {
   document.getElementById("newTicketModal").classList.add("open");
 }
 
-async function deleteCurrentTicket() {
+function deleteCurrentTicket() {
   const id = document.getElementById("inpEditTicketId").value;
   if (!id) return;
-  if (!confirm("Are you sure you want to delete this task?")) return;
+  const title = document.getElementById("inpTitle").value || "this task";
 
-  try {
-    const res = await fetch(`/api/tickets/${id}`, { method: "DELETE" });
-    if (!res.ok) throw new Error("Delete failed");
-    closeNewTicketModal();
-    await loadTickets();
-  } catch (e) {
-    alert("Error deleting task: " + e.message);
-  }
+  openConfirmModal({
+    title: "🗑️ Delete Task?",
+    message: `Are you sure you want to permanently delete "${title}"?`,
+    confirmText: "🗑️ Delete",
+    confirmClass: "",
+    confirmStyle: "color:var(--red); border-color:rgba(239, 68, 68, 0.5); background:rgba(239, 68, 68, 0.15);",
+    onConfirm: async () => {
+      try {
+        const res = await fetch(`/api/tickets/${id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("Delete failed");
+        closeNewTicketModal();
+        await loadTickets();
+      } catch (e) {
+        alert("Error deleting task: " + e.message);
+      }
+    }
+  });
 }
 
 function closeNewTicketModal() {
