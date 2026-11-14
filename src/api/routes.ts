@@ -277,7 +277,12 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
       ticket.currentStatus = "Pending";
       ticket.isFloated = false;
       ticket.googleTaskId = undefined; // Re-sync to Google Tasks as active
-      ticket.nextScheduledAt = new Date().toISOString();
+      const nowIso = new Date().toISOString();
+      ticket.nextScheduledAt = nowIso;
+      if (ticket.broadcast) {
+        ticket.broadcast.lastAnnouncedStage = "exact";
+        ticket.broadcast.lastAnnouncedAt = nowIso;
+      }
 
       db.saveTicket(ticket);
 
@@ -287,7 +292,9 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
         const reasonText = req.body.reason ? ` ${req.body.reason}` : "";
         const msg = `Attention ${person}: Dad checked ${ticket.title} and sent it back.${reasonText} Please make sure it is completely finished.`;
         const speakers = ticket.broadcast?.speakers?.length ? ticket.broadcast.speakers : ["All Rooms"];
-        announced = await broadcastAnnouncement(msg, speakers);
+        console.log(`[Reopen] Broadcasting Send-Back to ${JSON.stringify(speakers)}: "${msg}"`);
+        broadcastAnnouncement(msg, speakers).catch(err => console.error("[Reopen] Broadcast error:", err));
+        announced = true;
       }
 
       return reply.send({ success: true, ticket, announced });

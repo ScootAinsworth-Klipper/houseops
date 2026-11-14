@@ -31,25 +31,29 @@ def get_local_ip():
         s.close()
     return ip
 
-def serve_audio_file(directory, port=8099):
+def serve_audio_file(directory, port=0):
+    class ReusableHTTPServer(HTTPServer):
+        allow_reuse_address = True
+
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=directory, **kwargs)
         def log_message(self, format, *args):
             pass
 
-    server = HTTPServer(('0.0.0.0', port), Handler)
+    server = ReusableHTTPServer(('0.0.0.0', port), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server
 
-def speak(text, speaker_name=None, port=8099, temp_dir="/tmp/houseops_audio"):
+def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
     if not HAS_LIBS:
         print(f"[DRY-RUN] pychromecast / gTTS not installed. Would announce: '{text}'")
         return True
 
     os.makedirs(temp_dir, exist_ok=True)
-    audio_path = os.path.join(temp_dir, "announcement.mp3")
+    filename = f"announcement_{os.getpid()}_{int(time.time() * 1000)}.mp3"
+    audio_path = os.path.join(temp_dir, filename)
 
     # Generate MP3 with network fault tolerance
     try:
@@ -62,13 +66,14 @@ def speak(text, speaker_name=None, port=8099, temp_dir="/tmp/houseops_audio"):
     server = None
     browser = None
     try:
-        # Start local HTTP streaming server
+        # Start local HTTP streaming server on a free port (or specified port)
         server = serve_audio_file(temp_dir, port=port)
+        actual_port = server.server_port
         local_ip = get_local_ip()
-        media_url = f"http://{local_ip}:{port}/announcement.mp3"
+        media_url = f"http://{local_ip}:{actual_port}/{filename}"
 
-        # Discover Cast devices
-        chromecasts, browser = pychromecast.get_chromecasts()
+        # Discover Cast devices quickly (3s mDNS window finds all 17 LAN speakers in ~5s)
+        chromecasts, browser = pychromecast.get_chromecasts(timeout=3)
         target_casts = []
 
         if speaker_name:
@@ -127,9 +132,10 @@ def speak(text, speaker_name=None, port=8099, temp_dir="/tmp/houseops_audio"):
             threads.append(t)
 
         for t in threads:
-            t.join(timeout=6)
+            t.join(timeout=8)
 
-        time.sleep(3) # Wait for buffer stream
+        print(f"[Announcer] Playing '{text}' on {[c.name for c in target_casts]}")
+        time.sleep(7) # Allow speakers to finish streaming audio
         return True
     except Exception as e:
         print(f"[Announcer] Cast playback error: {e}", file=sys.stderr)
@@ -143,14 +149,20 @@ def speak(text, speaker_name=None, port=8099, temp_dir="/tmp/houseops_audio"):
         if server:
             try:
                 server.shutdown()
+                server.server_close()
             except Exception:
                 pass
+        try:
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="HouseOps Google Nest TTS Announcer")
     parser.add_argument("message", help="Message to announce")
     parser.add_argument("--speaker", default=None, help="Target speaker name (e.g. 'Kitchen speaker')")
-    parser.add_argument("--port", type=int, default=8099, help="Local HTTP streaming port")
+    parser.add_argument("--port", type=int, default=0, help="Local HTTP streaming port (0 = auto free port)")
 
     args = parser.parse_args()
     success = speak(args.message, speaker_name=args.speaker, port=args.port)

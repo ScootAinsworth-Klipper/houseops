@@ -116,7 +116,7 @@ export async function broadcastAnnouncement(
         resolved = true;
         resolve(false);
       }
-    }, 15000);
+    }, 30000);
 
     const finish = (code: number | null) => {
       if (!resolved) {
