@@ -9,10 +9,19 @@ import sys
 import os
 import json
 import time
+import shutil
+import subprocess
 import argparse
 import socket
 import threading
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(line_buffering=True)
+        except Exception:
+            pass
 
 try:
     import pychromecast
@@ -136,8 +145,9 @@ def get_local_ip():
     return ip
 
 def serve_audio_file(directory, port=0):
-    class ReusableHTTPServer(HTTPServer):
+    class ReusableHTTPServer(ThreadingHTTPServer):
         allow_reuse_address = True
+        daemon_threads = True
 
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
@@ -150,11 +160,48 @@ def serve_audio_file(directory, port=0):
     thread.start()
     return server
 
+def _boost_mp3_loudness(audio_path):
+    """Compress & normalize speech MP3 to match native Google Assistant voice loudness."""
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if not ffmpeg_bin:
+        return False
+    boosted_path = f"{audio_path}.boost.mp3"
+    try:
+        subprocess.run(
+            [
+                ffmpeg_bin,
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                audio_path,
+                "-af",
+                "acompressor=threshold=-22dB:ratio=4:attack=5:release=50,volume=11dB,alimiter=limit=-1.0dB",
+                "-b:a",
+                "128k",
+                boosted_path,
+            ],
+            check=True,
+            timeout=15,
+        )
+        os.replace(boosted_path, audio_path)
+        return True
+    except Exception as e:
+        print(f"[Announcer] ffmpeg loudness boost skipped: {e}", file=sys.stderr)
+        if os.path.exists(boosted_path):
+            try:
+                os.remove(boosted_path)
+            except Exception:
+                pass
+        return False
+
 def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
     if not HAS_LIBS:
         print(f"[DRY-RUN] pychromecast / gTTS not installed. Would announce: '{text}'")
         return True
 
+    t_start = time.time()
     os.makedirs(temp_dir, exist_ok=True)
     filename = f"announcement_{os.getpid()}_{int(time.time() * 1000)}.mp3"
     audio_path = os.path.join(temp_dir, filename)
@@ -166,6 +213,9 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
     except Exception as e:
         print(f"[Announcer] TTS generation failed (WAN offline?): {e}", file=sys.stderr)
         return False
+
+    boosted = _boost_mp3_loudness(audio_path)
+    t_tts = time.time() - t_start
 
     server = None
     browser = None
@@ -183,7 +233,10 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
             else:
                 wanted_names = [s.strip().lower() for s in speaker_name if s.strip()]
 
+        t_disc_start = time.time()
         target_casts, browser = _discover_chromecasts(wanted_names, discovery_timeout=10.0)
+        t_disc = time.time() - t_disc_start
+        print(f"[Announcer] Ready (tts={'boosted' if boosted else 'raw'} {t_tts:.2f}s, discover {t_disc:.2f}s) -> {[c.name for c in target_casts]}")
 
         if not target_casts:
             print("[Announcer] No Google Cast / Nest speakers discovered on local network.")
@@ -219,7 +272,12 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
                 ensure_announcement_volume(cast_dev)
 
                 mc = cast_dev.media_controller
-                mc.play_media(media_url, "audio/mp3")
+                mc.play_media(
+                    media_url,
+                    "audio/mp3",
+                    stream_type="BUFFERED",
+                    title="HouseOps Announcement",
+                )
                 mc.block_until_active(timeout=6)
                 ensure_announcement_volume(cast_dev)
             except Exception as e:
