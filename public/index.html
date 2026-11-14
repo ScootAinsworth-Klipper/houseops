@@ -36,13 +36,16 @@
   <!-- Navigation Tabs -->
   <nav class="tab-nav">
     <button class="nav-tab active" id="tabBtnActive" onclick="switchTab('active')">
-      📋 Active Work Orders (<span id="countActive">0</span>)
+      📋 Active (<span id="countActive">0</span>)
+    </button>
+    <button class="nav-tab" id="tabBtnCalendar" onclick="switchTab('calendar')">
+      📅 Week Load
     </button>
     <button class="nav-tab" id="tabBtnFloated" onclick="switchTab('floated')">
-      ⏳ Floated / Slipped (<span id="countFloated">0</span>)
+      ⏳ Floated (<span id="countFloated">0</span>)
     </button>
     <button class="nav-tab" id="tabBtnAudit" onclick="switchTab('audit')">
-      📸 Verified History
+      📸 History
     </button>
   </nav>
 
@@ -61,11 +64,14 @@
     <!-- Active Grid -->
     <div id="viewActive" class="grid-container"></div>
 
+    <!-- Weekly Schedule / Load View -->
+    <div id="viewCalendar" style="display:none; flex-direction:column; gap:14px;"></div>
+
     <!-- Floated Grid -->
     <div id="viewFloated" class="grid-container" style="display:none;"></div>
 
     <!-- Audit Log -->
-    <div id="viewAudit" style="display:none; display:flex; flex-direction:column; gap:10px;"></div>
+    <div id="viewAudit" style="display:none; flex-direction:column; gap:10px;"></div>
   </main>
 
   <!-- Hidden native camera/file input for 1-tap verify -->

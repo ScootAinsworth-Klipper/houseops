@@ -258,6 +258,219 @@ function renderTickets() {
   floatedGrid.innerHTML = floatedTickets.length
     ? floatedTickets.map(renderTicketCard).join("")
     : `<div style="color:var(--text-muted); padding:30px; text-align:center;">No floated tasks. Operations on schedule! 🎯</div>`;
+
+  renderCalendar();
+}
+
+let weekOffsetDays = 0;
+
+function changeWeekOffset(delta) {
+  if (delta === 0) weekOffsetDays = 0;
+  else weekOffsetDays += delta;
+  renderCalendar();
+}
+
+function doesTicketOccurOnDate(t, targetDate) {
+  const rec = t.recurrence || {};
+  const type = rec.type;
+  if (type === "OnDemand") return false;
+
+  const dow = targetDate.getDay(); // 0=Sun .. 6=Sat
+  if (type === "Daily") return true;
+  if (type === "Weekdays") return dow >= 1 && dow <= 5;
+  if (type === "Weekends") return dow === 0 || dow === 6;
+  if (type === "DaysOfWeek") {
+    return Array.isArray(rec.daysOfWeek) && rec.daysOfWeek.includes(dow);
+  }
+
+  const nextSched = new Date(t.nextScheduledAt);
+  const startOfTarget = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+  const startOfSched = new Date(nextSched.getFullYear(), nextSched.getMonth(), nextSched.getDate());
+  const diffDays = Math.round((startOfTarget - startOfSched) / (1000 * 60 * 60 * 24));
+
+  if (type === "Weekly") {
+    return dow === nextSched.getDay();
+  }
+  if (type === "IntervalDays") {
+    const interval = rec.intervalDays || 1;
+    return diffDays >= 0 && diffDays % interval === 0;
+  }
+  return diffDays === 0;
+}
+
+function formatTaskTime(h, m) {
+  const suffix = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m || 0).padStart(2, "0")} ${suffix}`;
+}
+
+function formatDurationTotal(mins) {
+  if (mins <= 0) return "0m";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
+
+function scrollToCalDay(dayId) {
+  const el = document.getElementById(dayId);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function openNewTicketModalForDay(dow) {
+  openNewTicketModal();
+  document.getElementById("inpRecurrence").value = "DaysOfWeek";
+  toggleRecurrenceOptions("DaysOfWeek");
+  document.querySelectorAll("#grpDaysOfWeek .day-chip").forEach(c => {
+    c.classList.toggle("active", parseInt(c.dataset.day, 10) === dow);
+  });
+}
+
+function renderCalendar() {
+  const calView = document.getElementById("viewCalendar");
+  if (!calView) return;
+
+  const visible = tickets.filter(matchesProfileFilter);
+  const today = new Date();
+  const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const isAdmin = currentProfile === "Dad";
+
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(todayMidnight);
+    d.setDate(d.getDate() + weekOffsetDays + i);
+    const dayTickets = visible
+      .filter(t => doesTicketOccurOnDate(t, d))
+      .sort((a, b) => {
+        const aMin = (a.preferredWindow?.startHour || 0) * 60 + (a.preferredWindow?.startMinute || 0);
+        const bMin = (b.preferredWindow?.startHour || 0) * 60 + (b.preferredWindow?.startMinute || 0);
+        return aMin - bMin;
+      });
+    const totalMins = dayTickets.reduce((sum, t) => sum + (t.preferredWindow?.durationMinutes || 30), 0);
+    days.push({ date: d, tickets: dayTickets, totalMins });
+  }
+
+  const startStr = days[0].date.toLocaleDateString([], { month: "short", day: "numeric" });
+  const endStr = days[6].date.toLocaleDateString([], { month: "short", day: "numeric" });
+
+  // 1. Top Week Nav & 7-Day Load Heatmap Strip
+  const stripItemsHtml = days.map((dayObj, idx) => {
+    const d = dayObj.date;
+    const count = dayObj.tickets.length;
+    const isToday = d.getTime() === todayMidnight.getTime();
+    const dowShort = d.toLocaleDateString([], { weekday: "short" });
+    const dayNum = d.getDate();
+
+    let pillBg = "var(--bg-card-alt)";
+    let pillBorder = isToday ? "var(--accent)" : "var(--border)";
+    let countColor = "var(--green)";
+    if (count >= 6) {
+      countColor = "var(--red)";
+      pillBg = "rgba(239, 68, 68, 0.1)";
+      if (!isToday) pillBorder = "rgba(239, 68, 68, 0.4)";
+    } else if (count >= 4) {
+      countColor = "var(--yellow)";
+      pillBg = "rgba(234, 179, 8, 0.1)";
+      if (!isToday) pillBorder = "rgba(234, 179, 8, 0.4)";
+    }
+
+    return `
+      <div onclick="scrollToCalDay('cal-day-${idx}')" style="flex:1; min-width:42px; background:${pillBg}; border:1px solid ${pillBorder}; border-radius:10px; padding:6px 4px; display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer;">
+        <span style="font-size:10px; font-weight:700; color:${isToday ? "var(--accent)" : "var(--text-muted)"}; text-transform:uppercase;">${isToday ? "TODAY" : dowShort}</span>
+        <span style="font-size:13px; font-weight:800; color:var(--text-main);">${dayNum}</span>
+        <span style="font-size:11px; font-weight:800; color:${countColor}; margin-top:2px;">${count} <span style="font-size:9px; font-weight:600;">tasks</span></span>
+      </div>
+    `;
+  }).join("");
+
+  // 2. Detailed Day Cards
+  const dayCardsHtml = days.map((dayObj, idx) => {
+    const d = dayObj.date;
+    const count = dayObj.tickets.length;
+    const isToday = d.getTime() === todayMidnight.getTime();
+    const fullDayLabel = d.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+
+    let loadBadge;
+    if (count === 0) {
+      loadBadge = `<span class="badge" style="background:var(--bg-card-alt); color:var(--text-muted); border:1px solid var(--border);">Free Day</span>`;
+    } else if (count <= 3) {
+      loadBadge = `<span class="badge" style="background:var(--green-soft); color:var(--green); border:1px solid rgba(34,197,94,0.35);">🟢 Light (${count})</span>`;
+    } else if (count <= 5) {
+      loadBadge = `<span class="badge" style="background:var(--yellow-soft); color:var(--yellow); border:1px solid rgba(234,179,8,0.35);">🟡 Moderate (${count})</span>`;
+    } else {
+      loadBadge = `<span class="badge" style="background:var(--red-soft); color:var(--red); border:1px solid rgba(239,68,68,0.4);">🔴 Heavy Load (${count})</span>`;
+    }
+
+    const addBtn = isAdmin
+      ? `<button class="btn" onclick="openNewTicketModalForDay(${d.getDay()})" style="flex:0; padding:4px 8px; font-size:11px; background:var(--bg-card-alt);">+ Add</button>`
+      : "";
+
+    const rowsHtml = dayObj.tickets.length === 0
+      ? `<div style="font-size:12px; color:var(--text-muted); padding:6px 2px;">No scheduled tasks on this day.</div>`
+      : dayObj.tickets.map(t => {
+          const timeLabel = formatTaskTime(t.preferredWindow?.startHour || 0, t.preferredWindow?.startMinute || 0);
+          const assignee = t.assignee || "Dad";
+          let personTag = `👨 Dad`;
+          let personColor = "#6ee7b7";
+          if (assignee === "Camden" || assignee === "Son") { personTag = "👦 Camden"; personColor = "#c7d2fe"; }
+          else if (assignee === "Sawyer") { personTag = "👧 Sawyer"; personColor = "#f5d0fe"; }
+          else if (assignee === "Family") { personTag = "👨‍👩‍👧‍👦 Family"; personColor = "#fcd34d"; }
+
+          const clickAttr = isAdmin ? `onclick="openEditTicketModal('${t.id}')" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:var(--bg-card-alt); border:1px solid var(--border); border-radius:8px;" title="Tap to edit schedule"` : `style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:var(--bg-card-alt); border:1px solid var(--border); border-radius:8px;"`;
+
+          return `
+            <div ${clickAttr}>
+              <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
+                <span style="font-size:11px; font-weight:700; color:var(--accent); background:rgba(56,189,248,0.12); padding:3px 6px; border-radius:5px; white-space:nowrap;">${timeLabel}</span>
+                <span style="font-size:13px; font-weight:600; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(t.title)}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                <span style="font-size:11px; font-weight:700; color:${personColor};">${personTag}</span>
+                ${isAdmin ? `<span style="font-size:11px; opacity:0.6;">✏️</span>` : ""}
+              </div>
+            </div>
+          `;
+        }).join("");
+
+    return `
+      <div class="ticket-card" id="cal-day-${idx}" style="border-left:${isToday ? "3px solid var(--accent)" : (count >= 6 ? "3px solid var(--red)" : "1px solid var(--border)")};">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:14px; font-weight:800; color:${isToday ? "var(--accent)" : "var(--text-main)"};">${isToday ? `Today • ${fullDayLabel}` : fullDayLabel}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:11px; color:var(--text-muted);">${formatDurationTotal(dayObj.totalMins)}</span>
+            ${loadBadge}
+            ${addBtn}
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
+          ${rowsHtml}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  calView.innerHTML = `
+    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <button class="btn" onclick="changeWeekOffset(-7)" style="flex:0; padding:6px 10px; font-size:12px;">◀ Prev</button>
+        <div style="text-align:center;">
+          <div style="font-size:13px; font-weight:800; color:var(--text-main);">📅 ${startStr} – ${endStr}</div>
+          <div style="font-size:11px; color:var(--text-muted);">Tap any day to jump • ${isAdmin ? "Tap any task to reschedule" : "Weekly Chore Schedule"}</div>
+        </div>
+        <div style="display:flex; gap:4px;">
+          ${weekOffsetDays !== 0 ? `<button class="btn" onclick="changeWeekOffset(0)" style="flex:0; padding:6px 8px; font-size:11px; color:var(--accent);">Today</button>` : ""}
+          <button class="btn" onclick="changeWeekOffset(7)" style="flex:0; padding:6px 10px; font-size:12px;">Next ▶</button>
+        </div>
+      </div>
+      <div style="display:flex; gap:5px; overflow-x:auto;">
+        ${stripItemsHtml}
+      </div>
+    </div>
+    ${dayCardsHtml}
+  `;
 }
 
 function renderTicketCard(t) {
@@ -596,10 +809,13 @@ function resizeImage(file, maxWidth, maxHeight) {
   });
 }
 
+const TAB_ORDER = ["active", "calendar", "floated", "audit"];
+
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
   document.getElementById("viewActive").style.display = tab === "active" ? "grid" : "none";
+  document.getElementById("viewCalendar").style.display = tab === "calendar" ? "flex" : "none";
   document.getElementById("viewFloated").style.display = tab === "floated" ? "grid" : "none";
   document.getElementById("viewAudit").style.display = tab === "audit" ? "flex" : "none";
 
@@ -608,11 +824,20 @@ function switchTab(tab) {
     filterBar.style.display = (currentProfile === "Dad" && tab !== "audit") ? "flex" : "none";
   }
 
-  if (tab === "active") document.getElementById("tabBtnActive").classList.add("active");
-  if (tab === "floated") document.getElementById("tabBtnFloated").classList.add("active");
+  let activeBtn = null;
+  if (tab === "active") activeBtn = document.getElementById("tabBtnActive");
+  if (tab === "calendar") {
+    activeBtn = document.getElementById("tabBtnCalendar");
+    renderCalendar();
+  }
+  if (tab === "floated") activeBtn = document.getElementById("tabBtnFloated");
   if (tab === "audit") {
-    document.getElementById("tabBtnAudit").classList.add("active");
+    activeBtn = document.getElementById("tabBtnAudit");
     loadAuditLog();
+  }
+  if (activeBtn) {
+    activeBtn.classList.add("active");
+    try { activeBtn.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); } catch (_) {}
   }
 }
 
@@ -910,6 +1135,38 @@ function setupPullToRefresh() {
   }, { passive: true });
 }
 
+function setupSwipeNavigation() {
+  const content = document.getElementById("mainContent");
+  if (!content) return;
+
+  let touchStartX = 0;
+  let touchStartY = 0;
+
+  content.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  content.addEventListener("touchend", (e) => {
+    if (!e.changedTouches || e.changedTouches.length !== 1) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+
+    // Require clear horizontal swipe (> 65px and at least 1.8x more horizontal than vertical)
+    if (Math.abs(dx) > 65 && Math.abs(dx) > Math.abs(dy) * 1.8) {
+      const idx = TAB_ORDER.indexOf(currentTab);
+      if (dx < 0 && idx < TAB_ORDER.length - 1) {
+        // Swiped left -> go to next page on the right
+        switchTab(TAB_ORDER[idx + 1]);
+      } else if (dx > 0 && idx > 0) {
+        // Swiped right -> go to previous page on the left
+        switchTab(TAB_ORDER[idx - 1]);
+      }
+    }
+  }, { passive: true });
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   if (!localStorage.getItem("houseops_profile")) {
     openProfileModal(true);
@@ -918,5 +1175,6 @@ window.addEventListener("DOMContentLoaded", () => {
   loadQuietHours();
   loadTickets();
   setupPullToRefresh();
+  setupSwipeNavigation();
   setInterval(loadTickets, 30000); // 30s auto-refresh
 });

@@ -86,13 +86,16 @@ html, body {
   display: flex;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
-  padding: 0 12px;
-  gap: 6px;
+  padding: 0 8px;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.tab-nav::-webkit-scrollbar { display: none; }
 
 .nav-tab {
-  padding: 10px 14px;
-  font-size: 13px;
+  padding: 10px 10px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-muted);
   background: transparent;
@@ -101,7 +104,9 @@ html, body {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all 0.15s ease;
 }
 .nav-tab.active {
