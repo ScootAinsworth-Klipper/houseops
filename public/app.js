@@ -835,8 +835,8 @@ async function handlePhotoCaptured(input) {
   pendingPhotoTicketId = null;
 
   try {
-    // Client-side image resize to max 1600px to keep Pi memory low & uploads fast
-    const resizedBlob = await resizeImage(file, 1600, 1600);
+    // Client-side image resize to max 2560px HD at 94% quality
+    const resizedBlob = await resizeImage(file, 2560, 2560);
     const formData = new FormData();
     formData.append("photo", resizedBlob, "proof.jpg");
 
@@ -935,12 +935,14 @@ function resizeImage(file, maxWidth, maxHeight) {
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
       ctx.drawImage(img, 0, 0, w, h);
       canvas.toBlob(blob => {
         URL.revokeObjectURL(img.src);
         if (blob) resolve(blob);
         else reject(new Error("Canvas blob conversion failed"));
-      }, "image/jpeg", 0.85);
+      }, "image/jpeg", 0.94);
     };
     img.onerror = reject;
   });

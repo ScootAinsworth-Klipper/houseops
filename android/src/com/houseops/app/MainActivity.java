@@ -61,6 +61,7 @@ public class MainActivity extends Activity {
     private LinearLayout errorView;
     private TextView errorText;
     private ValueCallback<Uri[]> uploadMessage;
+    private File cameraPhotoFile;
     private String currentServerUrl;
     private long downloadId = -1;
 
@@ -546,7 +547,17 @@ public class MainActivity extends Activity {
 
     private void launchCameraIntent() {
         try {
+            cameraPhotoFile = new File(getCacheDir(), "camera_capture.jpg");
+            if (cameraPhotoFile.exists()) {
+                cameraPhotoFile.delete();
+            }
+            cameraPhotoFile.createNewFile();
+
+            Uri photoUri = Uri.parse("content://" + PhotoProvider.AUTHORITY + "/camera_capture.jpg");
             Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoUri);
+            cameraIntent.setClipData(android.content.ClipData.newRawUri("", photoUri));
+            cameraIntent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivityForResult(cameraIntent, FILECHOOSER_RESULTCODE);
         } catch (Exception e) {
             Toast.makeText(this, "Could not launch Camera: " + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -556,6 +567,7 @@ public class MainActivity extends Activity {
 
     private void launchFilePickerIntent() {
         try {
+            cameraPhotoFile = null;
             Intent pickIntent = new Intent(Intent.ACTION_GET_CONTENT);
             pickIntent.addCategory(Intent.CATEGORY_OPENABLE);
             pickIntent.setType("image/*");
@@ -592,33 +604,38 @@ public class MainActivity extends Activity {
         if (requestCode == FILECHOOSER_RESULTCODE) {
             if (uploadMessage == null) return;
             Uri[] results = null;
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                String dataString = data.getDataString();
-                if (dataString != null) {
-                    results = new Uri[]{Uri.parse(dataString)};
-                } else if (data.getClipData() != null && data.getClipData().getItemCount() > 0) {
-                    int numSelected = data.getClipData().getItemCount();
-                    results = new Uri[numSelected];
-                    for (int i = 0; i < numSelected; i++) {
-                        results[i] = data.getClipData().getItemAt(i).getUri();
-                    }
-                } else if (data.getExtras() != null) {
-                    Object bmpObj = data.getExtras().get("data");
-                    if (bmpObj instanceof Bitmap) {
-                        try {
-                            Bitmap bmp = (Bitmap) bmpObj;
-                            File cacheFile = new File(getCacheDir(), "verify_" + System.currentTimeMillis() + ".jpg");
-                            FileOutputStream fos = new FileOutputStream(cacheFile);
-                            bmp.compress(Bitmap.CompressFormat.JPEG, 92, fos);
-                            fos.flush();
-                            fos.close();
-                            results = new Uri[]{Uri.fromFile(cacheFile)};
-                        } catch (Exception e) {
-                            Toast.makeText(this, "Error saving camera photo: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            if (resultCode == Activity.RESULT_OK) {
+                if (cameraPhotoFile != null && cameraPhotoFile.exists() && cameraPhotoFile.length() > 0) {
+                    results = new Uri[]{Uri.fromFile(cameraPhotoFile)};
+                } else if (data != null) {
+                    String dataString = data.getDataString();
+                    if (dataString != null) {
+                        results = new Uri[]{Uri.parse(dataString)};
+                    } else if (data.getClipData() != null && data.getClipData().getItemCount() > 0) {
+                        int numSelected = data.getClipData().getItemCount();
+                        results = new Uri[numSelected];
+                        for (int i = 0; i < numSelected; i++) {
+                            results[i] = data.getClipData().getItemAt(i).getUri();
+                        }
+                    } else if (data.getExtras() != null) {
+                        Object bmpObj = data.getExtras().get("data");
+                        if (bmpObj instanceof Bitmap) {
+                            try {
+                                Bitmap bmp = (Bitmap) bmpObj;
+                                File cacheFile = new File(getCacheDir(), "verify_" + System.currentTimeMillis() + ".jpg");
+                                FileOutputStream fos = new FileOutputStream(cacheFile);
+                                bmp.compress(Bitmap.CompressFormat.JPEG, 96, fos);
+                                fos.flush();
+                                fos.close();
+                                results = new Uri[]{Uri.fromFile(cacheFile)};
+                            } catch (Exception e) {
+                                Toast.makeText(this, "Error saving camera photo: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            }
                         }
                     }
                 }
             }
+            cameraPhotoFile = null;
             uploadMessage.onReceiveValue(results);
             uploadMessage = null;
         } else {

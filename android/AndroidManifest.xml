@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.scoot.houseops"
-    android:versionCode="4"
-    android:versionName="1.0.3">
+    android:versionCode="5"
+    android:versionName="1.0.4">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
 
@@ -41,5 +41,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <provider
+            android:name=".PhotoProvider"
+            android:authorities="com.scoot.houseops.photoprovider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>
