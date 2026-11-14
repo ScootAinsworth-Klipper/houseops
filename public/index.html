@@ -274,9 +274,9 @@
 
       <div id="dadPinBox" style="display:none; flex-direction:column; gap:8px; margin-top:8px; padding-top:10px; border-top:1px solid var(--border);">
         <label style="font-size:12px; color:var(--text-muted); font-weight:600;">Enter Dad Admin PIN:</label>
-        <div style="display:flex; gap:8px;">
-          <input type="password" inputmode="numeric" maxlength="4" class="form-input" id="inpDadPin" placeholder="••••" style="text-align:center; font-size:18px; letter-spacing:6px;" onkeydown="if(event.key==='Enter') verifyDadPin()">
-          <button class="btn btn-primary" onclick="verifyDadPin()" style="flex:0 0 auto; padding:8px 16px;">Unlock</button>
+        <div style="display:flex; gap:8px; width:100%; align-items:center;">
+          <input type="password" inputmode="numeric" maxlength="4" class="form-input" id="inpDadPin" placeholder="••••" style="flex:1; min-width:0; width:100%; text-align:center; font-size:18px; letter-spacing:6px;" oninput="if(this.value.length===4) verifyDadPin()" onkeydown="if(event.key==='Enter') verifyDadPin()">
+          <button class="btn btn-primary" onclick="verifyDadPin()" style="flex:0 0 auto; padding:10px 18px; white-space:nowrap;">Unlock</button>
         </div>
         <div id="dadPinError" style="font-size:12px; color:var(--red); display:none;">❌ Incorrect PIN.</div>
       </div>

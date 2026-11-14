@@ -95,7 +95,10 @@ function showDadPinPrompt() {
   document.getElementById("dadPinError").style.display = "none";
   inp.value = "";
   box.style.display = "flex";
-  setTimeout(() => inp.focus(), 100);
+  setTimeout(() => {
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    inp.focus();
+  }, 100);
 }
 
 function verifyDadPin() {
