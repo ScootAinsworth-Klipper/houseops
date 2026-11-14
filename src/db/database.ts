@@ -57,6 +57,15 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS school_menus (
+  date TEXT PRIMARY KEY,
+  breakfast_on_the_go TEXT NOT NULL DEFAULT '',
+  breakfast_traditional TEXT NOT NULL DEFAULT '',
+  lunch TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(current_status);
 CREATE INDEX IF NOT EXISTS idx_completion_ticket_id ON completion_records(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_sync_queue_created ON sync_queue(created_at);
@@ -293,6 +302,78 @@ export class HouseOpsDatabase {
       body: r.body,
       tab: r.tab || "active",
       createdAt: r.created_at
+    }));
+  }
+
+  upsertSchoolMenus(entries: Array<{
+    date: string;
+    breakfastOnTheGo?: string;
+    breakfastTraditional?: string;
+    lunch?: string;
+    note?: string;
+  }>): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO school_menus (date, breakfast_on_the_go, breakfast_traditional, lunch, note, updated_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(date) DO UPDATE SET
+        breakfast_on_the_go = excluded.breakfast_on_the_go,
+        breakfast_traditional = excluded.breakfast_traditional,
+        lunch = excluded.lunch,
+        note = excluded.note,
+        updated_at = datetime('now')
+    `);
+    const tx = this.db.transaction(() => {
+      let count = 0;
+      for (const e of entries) {
+        if (!e.date) continue;
+        stmt.run(
+          e.date,
+          e.breakfastOnTheGo || "",
+          e.breakfastTraditional || "",
+          e.lunch || "",
+          e.note || ""
+        );
+        count++;
+      }
+      return count;
+    });
+    return tx();
+  }
+
+  getSchoolMenu(date: string): {
+    date: string;
+    breakfastOnTheGo: string;
+    breakfastTraditional: string;
+    lunch: string;
+    note: string;
+  } | null {
+    const r = this.db.prepare("SELECT * FROM school_menus WHERE date = ?").get(date) as any;
+    if (!r) return null;
+    return {
+      date: r.date,
+      breakfastOnTheGo: r.breakfast_on_the_go || "",
+      breakfastTraditional: r.breakfast_traditional || "",
+      lunch: r.lunch || "",
+      note: r.note || ""
+    };
+  }
+
+  getSchoolMenus(monthPrefix?: string): Array<{
+    date: string;
+    breakfastOnTheGo: string;
+    breakfastTraditional: string;
+    lunch: string;
+    note: string;
+  }> {
+    const rows = monthPrefix
+      ? (this.db.prepare("SELECT * FROM school_menus WHERE date LIKE ? ORDER BY date ASC").all(`${monthPrefix}%`) as any[])
+      : (this.db.prepare("SELECT * FROM school_menus ORDER BY date ASC").all() as any[]);
+    return rows.map(r => ({
+      date: r.date,
+      breakfastOnTheGo: r.breakfast_on_the_go || "",
+      breakfastTraditional: r.breakfast_traditional || "",
+      lunch: r.lunch || "",
+      note: r.note || ""
     }));
   }
 

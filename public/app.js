@@ -1,4 +1,5 @@
 let tickets = [];
+let schoolMenuState = { todayDate: "", todayEntry: null, nextSchoolEntry: null, items: [] };
 let pendingPhotoTicketId = null;
 let currentProfile = localStorage.getItem("houseops_profile") || "Dad";
 let dadFilter = "All";
@@ -249,6 +250,45 @@ function updateCounts() {
   document.getElementById("countFloated").innerText = floated;
 }
 
+function renderSchoolMenuBanner() {
+  const entry = schoolMenuState.nextSchoolEntry || schoolMenuState.todayEntry;
+  if (!entry) return "";
+
+  const isToday = entry.date === schoolMenuState.todayDate;
+  const parts = entry.date.split("-").map(Number);
+  const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+  const dayTitle = isToday
+    ? "Today's School Menu"
+    : `Next School Day • ${dt.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}`;
+
+  const otg = entry.breakfastOnTheGo || "—";
+  const trad = entry.breakfastTraditional || "—";
+  const bfastLine = otg === trad
+    ? escapeHtml(otg)
+    : `<span style="color:var(--text-muted);">On-Go:</span> ${escapeHtml(otg)} &nbsp;|&nbsp; <span style="color:var(--text-muted);">Trad:</span> ${escapeHtml(trad)}`;
+  const lunchLine = entry.lunch ? escapeHtml(entry.lunch) : (entry.note ? `🎉 ${escapeHtml(entry.note)}` : "—");
+
+  return `
+    <div class="ticket-card" style="grid-column: 1 / -1; border-left:3px solid #f59e0b; background:linear-gradient(135deg, rgba(245,158,11,0.08), var(--bg-card)); padding:12px 14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <div style="font-size:13px; font-weight:800; color:#fbbf24;">🍎 ${dayTitle}</div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn" onclick="speakSchoolMenu(this)" style="flex:0; padding:4px 9px; font-size:11px; color:#fbbf24; border-color:rgba(245,158,11,0.4); background:rgba(245,158,11,0.12);">
+            🔊 Ask / Read Aloud
+          </button>
+          <button class="btn" onclick="openSchoolMenuModal()" style="flex:0; padding:4px 9px; font-size:11px; background:var(--bg-card-alt);">
+            📅 Full Month
+          </button>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:3px; margin-top:4px; font-size:12px; line-height:1.35;">
+        <div><strong style="color:#fcd34d;">🍽️ Lunch:</strong> <span style="color:var(--text-main);">${lunchLine}</span></div>
+        <div><strong style="color:#93c5fd;">🥐 Breakfast:</strong> <span style="color:var(--text-main);">${bfastLine}</span></div>
+      </div>
+    </div>
+  `;
+}
+
 function renderTickets() {
   const activeGrid = document.getElementById("viewActive");
   const floatedGrid = document.getElementById("viewFloated");
@@ -257,9 +297,13 @@ function renderTickets() {
   const activeTickets = visible.filter(t => t.recurrence.type === "OnDemand" || (t.currentStatus !== "Verified" && !t.isFloated));
   const floatedTickets = visible.filter(t => t.recurrence.type !== "OnDemand" && t.currentStatus !== "Verified" && t.isFloated);
 
+  const menuBannerHtml = (currentProfile === "Sawyer" || currentProfile === "Dad" || currentProfile === "Family")
+    ? renderSchoolMenuBanner()
+    : "";
+
   activeGrid.innerHTML = activeTickets.length
-    ? activeTickets.map(renderTicketCard).join("")
-    : `<div style="color:var(--text-muted); padding:30px; text-align:center;">All caught up! Zero pending work orders. ⚡</div>`;
+    ? menuBannerHtml + activeTickets.map(renderTicketCard).join("")
+    : menuBannerHtml + `<div style="color:var(--text-muted); padding:30px; text-align:center;">All caught up! Zero pending work orders. ⚡</div>`;
 
   floatedGrid.innerHTML = floatedTickets.length
     ? floatedTickets.map(renderTicketCard).join("")
@@ -449,6 +493,14 @@ function renderCalendar() {
           `;
         }).join("");
 
+    const dateIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const menuForDay = (schoolMenuState.items || []).find(m => m.date === dateIso);
+    const menuDayHtml = menuForDay
+      ? `<div style="font-size:11px; color:#fcd34d; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:7px; padding:5px 8px; margin-bottom:2px;">
+           🍎 <strong>School Lunch:</strong> ${escapeHtml(menuForDay.lunch || menuForDay.note || "No School")}
+         </div>`
+      : "";
+
     return `
       <div class="ticket-card" id="cal-day-${idx}" style="border-left:${isToday ? "3px solid var(--accent)" : (count >= 6 ? "3px solid var(--red)" : "1px solid var(--border)")};">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -462,6 +514,7 @@ function renderCalendar() {
           </div>
         </div>
         <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
+          ${menuDayHtml}
           ${rowsHtml}
         </div>
       </div>
@@ -924,6 +977,15 @@ async function submitVoicePhrase() {
       statusEl.innerText = "❌ " + (data.error || "Could not match a task.");
       btn.disabled = false;
       btn.innerText = "✓ Complete Task";
+      return;
+    }
+    if (data.menuQuery) {
+      statusEl.innerText = `🍎 ${data.message}`;
+      setTimeout(() => {
+        closeVoiceModal();
+        btn.disabled = false;
+        btn.innerText = "✓ Complete Task";
+      }, 2200);
       return;
     }
     statusEl.innerText = `✅ Marked '${data.ticket.title}' complete!`;
@@ -1593,6 +1655,105 @@ function setupSwipeNavigation() {
   container.addEventListener("touchcancel", () => finishSwipe(true), { passive: true });
 }
 
+async function loadSchoolMenu() {
+  try {
+    const res = await fetch("/api/menu");
+    if (res.ok) {
+      schoolMenuState = await res.json();
+      renderTickets();
+    }
+  } catch (_) {}
+}
+
+async function speakSchoolMenu(btn) {
+  const orig = btn ? btn.innerText : "";
+  if (btn) { btn.disabled = true; btn.innerText = "⏳ Speaking..."; }
+  try {
+    const res = await fetch("/api/menu/announce", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ meal: "lunch", target: "auto" })
+    });
+    const data = await res.json();
+    if (btn) btn.innerText = "✅ Spoken!";
+    if (data.message && !data.success) {
+      alert(data.message);
+    }
+    setTimeout(() => {
+      if (btn) { btn.disabled = false; btn.innerText = orig; }
+    }, 1500);
+  } catch (e) {
+    alert("Error announcing menu: " + e.message);
+    if (btn) { btn.disabled = false; btn.innerText = orig; }
+  }
+}
+
+function openSchoolMenuModal() {
+  const body = document.getElementById("schoolMenuModalBody");
+  const items = schoolMenuState.items || [];
+  body.innerHTML = items.length
+    ? items.map(m => {
+        const parts = m.date.split("-").map(Number);
+        const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+        const dayStr = dt.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+        const isToday = m.date === schoolMenuState.todayDate;
+        const border = isToday ? "1px solid #f59e0b" : "1px solid var(--border)";
+        if (!m.lunch && m.note) {
+          return `<div style="padding:8px 10px; border-radius:8px; background:var(--bg-card-alt); border:${border}; font-size:12px;">
+            <strong style="color:#fbbf24;">${dayStr}:</strong> 🎉 ${escapeHtml(m.note)}
+          </div>`;
+        }
+        return `<div style="padding:8px 10px; border-radius:8px; background:var(--bg-card-alt); border:${border}; font-size:12px; display:flex; flex-direction:column; gap:2px;">
+          <div style="font-weight:800; color:${isToday ? "#fbbf24" : "var(--text-main)"};">${dayStr}${m.note ? ` <span style="color:var(--accent); font-weight:600;">(${escapeHtml(m.note)})</span>` : ""}</div>
+          <div><span style="color:#fcd34d; font-weight:700;">Lunch:</span> ${escapeHtml(m.lunch)}</div>
+          <div><span style="color:#93c5fd; font-weight:700;">Breakfast:</span> ${escapeHtml(m.breakfastTraditional || m.breakfastOnTheGo)}${m.breakfastOnTheGo && m.breakfastTraditional && m.breakfastOnTheGo !== m.breakfastTraditional ? ` / On-Go: ${escapeHtml(m.breakfastOnTheGo)}` : ""}</div>
+        </div>`;
+      }).join("")
+    : `<div style="color:var(--text-muted); font-size:12px;">No school menus loaded yet.</div>`;
+
+  const impPanel = document.getElementById("schoolMenuImportPanel");
+  if (impPanel) impPanel.style.display = currentProfile === "Dad" ? "flex" : "none";
+  document.getElementById("schoolMenuModal").classList.add("open");
+}
+
+function closeSchoolMenuModal() {
+  document.getElementById("schoolMenuModal").classList.remove("open");
+}
+
+async function importSchoolMenuCsv() {
+  const raw = document.getElementById("inpMenuImport").value.trim();
+  if (!raw) return;
+  const entries = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const cols = trimmed.split("|").map(s => s.trim());
+    if (cols.length >= 2 && /^\d{4}-\d{2}-\d{2}$/.test(cols[0])) {
+      entries.push({
+        date: cols[0],
+        breakfastOnTheGo: cols[1] || "",
+        breakfastTraditional: cols[2] || cols[1] || "",
+        lunch: cols[3] || "",
+        note: cols[4] || ""
+      });
+    }
+  }
+  if (!entries.length) {
+    alert("Format each line as:\nYYYY-MM-DD | On-The-Go | Traditional | Lunch");
+    return;
+  }
+  const res = await fetch("/api/menu/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ entries })
+  });
+  if (res.ok) {
+    document.getElementById("inpMenuImport").value = "";
+    await loadSchoolMenu();
+    openSchoolMenuModal();
+  }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   if (!localStorage.getItem("houseops_profile")) {
     openProfileModal(true);
@@ -1604,6 +1765,7 @@ window.addEventListener("DOMContentLoaded", () => {
   }
   applyProfileUI();
   loadQuietHours();
+  loadSchoolMenu();
   loadTickets();
   setupPullToRefresh();
   setupSwipeNavigation();

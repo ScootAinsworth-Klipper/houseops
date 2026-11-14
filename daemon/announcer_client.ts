@@ -95,9 +95,10 @@ export function buildAnnouncementText(
 export async function broadcastAnnouncement(
   message: string,
   speakerName?: string | string[],
-  scriptPath?: string
+  scriptPath?: string,
+  bypassQuietHours: boolean = false
 ): Promise<boolean> {
-  if (isQuietHours()) {
+  if (!bypassQuietHours && isQuietHours()) {
     console.log(`[Announcer] Muted announcement due to quiet hours: "${message}"`);
     return false;
   }

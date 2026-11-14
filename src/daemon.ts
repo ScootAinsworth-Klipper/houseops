@@ -6,6 +6,7 @@ import { evaluateFloatingTickets, calculateNextOccurrence } from "./core/schedul
 import { CompletionRecord } from "./core/types.js";
 import { createGoogleTasksClient, syncTicketToTasks } from "./sync/google.js";
 import { isQuietHours, buildAnnouncementText, broadcastAnnouncement } from "../daemon/announcer_client.js";
+import { parseMenuVoiceQuery, announceSchoolMenu } from "./core/school_menu.js";
 
 export interface DaemonCycleOptions {
   now?: Date;
@@ -189,14 +190,25 @@ export async function runDaemonCycle(
         }
       }
 
-      // 3c. Check unlinked voice tasks ("Hey Google, add a task: Camden fed the dogs")
-      // Only intercept tasks that explicitly express chore completion so regular personal Google Tasks are never touched!
+      // 3c. Check unlinked voice tasks (School Menu voice queries & chore completion phrases)
+      // Only intercept explicit menu queries or chore completions so regular personal Google Tasks are never touched!
       const completionMarkers = /\b(done|finished|complete|completed|did|fed|swapped|cleaned|picked up|unloaded|loaded|sorted|gathered|wiped|took out|checked off|houseops)\b/i;
       const stopWords = new Set(["the", "a", "an", "to", "in", "on", "for", "of", "is", "are", "was", "were", "done", "finished", "complete", "completed", "did", "just", "i", "we", "he", "she", "camden", "sawyer", "dad", "please", "now", "right", "task", "chore", "with", "out", "up"]);
       for (const g of gTasks) {
         if (g.status === "needsAction" && !linkedTaskIds.has(g.id) && !(g.notes || "").includes("Ticket: TICK-")) {
           const rawTitle = (g.title || "").trim();
-          if (!rawTitle || !completionMarkers.test(rawTitle)) continue;
+          if (!rawTitle) continue;
+
+          // Intercept School Lunch / Breakfast / Menu Routine triggers first
+          const menuQuery = parseMenuVoiceQuery(rawTitle);
+          if (menuQuery) {
+            try { await gClient.tasks.delete({ tasklist: "@default", task: g.id }); } catch (_) {}
+            const spoken = await announceSchoolMenu(db, { meal: menuQuery.meal, target: menuQuery.target });
+            console.log(`[SchoolMenu] Voice query "${rawTitle}" -> "${spoken.message}"`);
+            continue;
+          }
+
+          if (!completionMarkers.test(rawTitle)) continue;
           const lower = rawTitle.toLowerCase();
           const spokenWords = lower.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w: string) => w.length >= 2);
 
@@ -291,23 +303,56 @@ export function pruneOldLocalPhotos(maxAgeDays: number = 30): number {
   return deleted;
 }
 
-export function startDaemon(db: HouseOpsDatabase, intervalMs: number = 20000): void {
+function getAdaptivePollIntervalMs(defaultMs: number): number {
+  if (defaultMs < 15000) return defaultMs;
+  const now = new Date();
+  const chicagoParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(now);
+  const wd = chicagoParts.find(p => p.type === "weekday")?.value || "";
+  const h = parseInt(chicagoParts.find(p => p.type === "hour")?.value || "0", 10);
+  const m = parseInt(chicagoParts.find(p => p.type === "minute")?.value || "0", 10);
+  const isWeekday = !["Sat", "Sun"].includes(wd);
+  const mins = h * 60 + m;
+  // Poll every 5s during school morning prep (6:00 AM - 8:30 AM CST) for snappy "What's for lunch?" answers
+  if (isWeekday && mins >= 360 && mins <= 510) {
+    return 5000;
+  }
+  return defaultMs;
+}
+
+export function startDaemon(db: HouseOpsDatabase, intervalMs: number = 15000): void {
   if (daemonTimer) return;
-  console.log(`⚡ HouseOps Background Scheduler & Google Tasks Daemon active (polling every ${Math.round(intervalMs / 1000)}s)`);
+  console.log(`⚡ HouseOps Background Scheduler & Google Tasks Daemon active (polling every ${Math.round(intervalMs / 1000)}s, 5s on weekday mornings)`);
   pruneOldLocalPhotos(30);
   lastPhotoPruneAt = Date.now();
-  daemonTimer = setInterval(() => {
-    if (Date.now() - lastPhotoPruneAt > 6 * 60 * 60 * 1000) {
-      pruneOldLocalPhotos(30);
-      lastPhotoPruneAt = Date.now();
+
+  const tick = async () => {
+    try {
+      if (Date.now() - lastPhotoPruneAt > 6 * 60 * 60 * 1000) {
+        pruneOldLocalPhotos(30);
+        lastPhotoPruneAt = Date.now();
+      }
+      await runDaemonCycle(db);
+    } catch (err) {
+      console.error("Daemon cycle error:", err);
+    } finally {
+      if (daemonTimer !== null) {
+        daemonTimer = setTimeout(tick, getAdaptivePollIntervalMs(intervalMs));
+      }
     }
-    runDaemonCycle(db).catch(err => console.error("Daemon cycle error:", err));
-  }, intervalMs);
+  };
+
+  daemonTimer = setTimeout(tick, 3000);
 }
 
 export function stopDaemon(): void {
   if (daemonTimer) {
-    clearInterval(daemonTimer);
+    clearTimeout(daemonTimer);
     daemonTimer = null;
   }
 }

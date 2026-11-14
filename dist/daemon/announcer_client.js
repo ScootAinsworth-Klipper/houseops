@@ -75,8 +75,8 @@ export function buildAnnouncementText(type, ticket, minutesRemaining, choreTitle
 /**
  * Dispatches spoken announcement via the Python pychromecast script.
  */
-export async function broadcastAnnouncement(message, speakerName, scriptPath) {
-    if (isQuietHours()) {
+export async function broadcastAnnouncement(message, speakerName, scriptPath, bypassQuietHours = false) {
+    if (!bypassQuietHours && isQuietHours()) {
         console.log(`[Announcer] Muted announcement due to quiet hours: "${message}"`);
         return false;
     }

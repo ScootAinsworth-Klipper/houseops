@@ -5,8 +5,10 @@ import { calculateNextOccurrence, evaluateFloatingTickets } from "../core/schedu
 import { broadcastAnnouncement, getQuietHoursConfig, setQuietHoursConfig, isQuietHours } from "../../daemon/announcer_client.js";
 import { createGoogleTasksClient } from "../sync/google.js";
 import { runDaemonCycle } from "../daemon.js";
+import { ensureInitialSchoolMenus, resolveActiveSchoolMenu, parseMenuVoiceQuery, announceSchoolMenu } from "../core/school_menu.js";
 export function registerRoutes(app, db, photoDir) {
     fs.mkdirSync(photoDir, { recursive: true });
+    ensureInitialSchoolMenus(db);
     // Load persisted quiet hours config on startup
     const rawQuiet = db.getSetting("quiet_hours_config");
     if (rawQuiet) {
@@ -131,6 +133,11 @@ export function registerRoutes(app, db, photoDir) {
         const spokenText = (req.body?.text || req.query?.text || req.params?.query || "").trim();
         if (!spokenText) {
             return reply.status(400).send({ error: "No voice phrase provided" });
+        }
+        const menuQuery = parseMenuVoiceQuery(spokenText);
+        if (menuQuery) {
+            const result = await announceSchoolMenu(db, { meal: menuQuery.meal, target: menuQuery.target });
+            return reply.send({ success: result.success, menuQuery: true, message: result.message, entry: result.entry });
         }
         const ticket = matchTicketFromPhrase(spokenText);
         if (!ticket) {
@@ -335,6 +342,33 @@ export function registerRoutes(app, db, photoDir) {
         const notifications = db.getNotifications(profile, since);
         return reply.send({ serverTime, notifications });
     });
+    // School Menu API: Get current/upcoming + full list
+    app.get("/api/menu", async (req, reply) => {
+        const active = resolveActiveSchoolMenu(db);
+        const items = db.getSchoolMenus(req.query?.month);
+        return reply.send({ ...active, items });
+    });
+    // Bulk import / update monthly school menus
+    app.post("/api/menu/bulk", async (req, reply) => {
+        const entries = Array.isArray(req.body?.entries) ? req.body.entries : [];
+        if (entries.length === 0) {
+            return reply.status(400).send({ error: "entries array is required" });
+        }
+        const count = db.upsertSchoolMenus(entries);
+        return reply.send({ success: true, count });
+    });
+    // Voice announcement trigger for school lunch / breakfast
+    const menuAnnounceHandler = async (req, reply) => {
+        const meal = req.body?.meal || req.query?.meal || "lunch";
+        const target = req.body?.target || req.query?.target || "auto";
+        const speakers = req.body?.speakers?.length
+            ? req.body.speakers
+            : (req.query?.speaker ? [req.query.speaker] : undefined);
+        const result = await announceSchoolMenu(db, { meal, target, speakers, bypassQuietHours: true });
+        return reply.send(result);
+    };
+    app.get("/api/menu/announce", menuAnnounceHandler);
+    app.post("/api/menu/announce", menuAnnounceHandler);
     // Test Voice Broadcast
     app.post("/api/announce", async (req, reply) => {
         const msg = req.body?.message || "Hello! HouseOps voice broadcast is operational across all rooms.";
