@@ -686,15 +686,30 @@ async function reopenTicket(ticketId, auditId, announce, btn) {
         btn.innerText = announce ? "⏳ Sending Back..." : "⏳ Reopening...";
       }
       try {
-        const res = await fetch(`/api/tickets/${ticketId}/reopen`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            auditId: auditId || undefined,
-            announce: Boolean(announce),
-            reason: reason || undefined
-          })
-        });
+        let res;
+        try {
+          res = await fetch(`/api/tickets/${ticketId}/reopen`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              auditId: auditId || undefined,
+              announce: Boolean(announce),
+              reason: reason || undefined
+            })
+          });
+        } catch (_) {
+          // Retry once after 1.5s if Wi-Fi or service had a momentary blip
+          await new Promise(r => setTimeout(r, 1500));
+          res = await fetch(`/api/tickets/${ticketId}/reopen`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              auditId: auditId || undefined,
+              announce: Boolean(announce),
+              reason: reason || undefined
+            })
+          });
+        }
         if (!res.ok) throw new Error("Failed to reopen task");
         await loadTickets();
         await loadAuditLog();
@@ -941,6 +956,7 @@ const TAB_PANE_IDS = {
 
 function switchTab(tab) {
   currentTab = tab;
+  try { sessionStorage.setItem("houseops_tab", tab); } catch (_) {}
   document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
   document.querySelectorAll(".tab-pane").forEach(p => {
     p.classList.remove("active", "swipe-preview");
@@ -1245,9 +1261,10 @@ function manualRefresh() {
   const pill = document.getElementById("refreshPill");
   if (pill) {
     pill.classList.add("visible");
-    setTimeout(() => pill.classList.remove("visible"), 1200);
   }
-  loadTickets();
+  setTimeout(() => {
+    window.location.reload();
+  }, 250);
 }
 
 function setupPullToRefresh() {
@@ -1456,6 +1473,10 @@ function setupSwipeNavigation() {
 window.addEventListener("DOMContentLoaded", () => {
   if (!localStorage.getItem("houseops_profile")) {
     openProfileModal(true);
+  }
+  const savedTab = sessionStorage.getItem("houseops_tab");
+  if (savedTab && TAB_ORDER.includes(savedTab)) {
+    switchTab(savedTab);
   }
   applyProfileUI();
   loadQuietHours();

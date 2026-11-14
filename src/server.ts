@@ -34,10 +34,14 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
 
   const db = initDatabase(dbPath);
 
-  // Serve static UI assets
+  // Serve static UI assets without stale caching on mobile WebViews
   await app.register(fastifyStatic, {
     root: staticDir,
-    prefix: "/"
+    prefix: "/",
+    cacheControl: false,
+    setHeaders: (res) => {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    }
   });
 
   // Serve verified photos

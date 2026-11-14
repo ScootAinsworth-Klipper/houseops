@@ -20,10 +20,14 @@ export async function buildServer(options = {}) {
     fs.mkdirSync(photoDir, { recursive: true });
     fs.mkdirSync(staticDir, { recursive: true });
     const db = initDatabase(dbPath);
-    // Serve static UI assets
+    // Serve static UI assets without stale caching on mobile WebViews
     await app.register(fastifyStatic, {
         root: staticDir,
-        prefix: "/"
+        prefix: "/",
+        cacheControl: false,
+        setHeaders: (res) => {
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+        }
     });
     // Serve verified photos
     await app.register(fastifyStatic, {
