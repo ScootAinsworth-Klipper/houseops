@@ -39,7 +39,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     root: staticDir,
     prefix: "/",
     cacheControl: false,
-    setHeaders: (res) => {
+    setHeaders: (res: any) => {
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     }
   });
