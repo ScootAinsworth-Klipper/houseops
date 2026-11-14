@@ -2,10 +2,18 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { calculateNextOccurrence, evaluateFloatingTickets } from "../core/scheduler.js";
-import { broadcastAnnouncement } from "../../daemon/announcer_client.js";
+import { broadcastAnnouncement, getQuietHoursConfig, setQuietHoursConfig, isQuietHours } from "../../daemon/announcer_client.js";
 import { runDaemonCycle } from "../daemon.js";
 export function registerRoutes(app, db, photoDir) {
     fs.mkdirSync(photoDir, { recursive: true });
+    // Load persisted quiet hours config on startup
+    const rawQuiet = db.getSetting("quiet_hours_config");
+    if (rawQuiet) {
+        try {
+            setQuietHoursConfig(JSON.parse(rawQuiet));
+        }
+        catch (_) { }
+    }
     // Get all tickets
     app.get("/api/tickets", async (_req, reply) => {
         const tickets = db.getTickets();
@@ -258,6 +266,29 @@ export function registerRoutes(app, db, photoDir) {
         const speaker = req.body?.speaker || "All Rooms";
         const ok = await broadcastAnnouncement(msg, speaker);
         return reply.send({ success: ok, message: msg, speaker });
+    });
+    // Get Quiet Hours Settings & Status
+    app.get("/api/settings/quiet-hours", async (_req, reply) => {
+        const cfg = getQuietHoursConfig();
+        return reply.send({
+            ...cfg,
+            isCurrentlyQuiet: isQuietHours(new Date())
+        });
+    });
+    // Update Quiet Hours Settings
+    app.post("/api/settings/quiet-hours", async (req, reply) => {
+        const body = req.body || {};
+        const updated = setQuietHoursConfig({
+            enabled: body.enabled !== undefined ? Boolean(body.enabled) : undefined,
+            forceMute: body.forceMute !== undefined ? Boolean(body.forceMute) : undefined,
+            startTime: body.startTime,
+            endTime: body.endTime
+        });
+        db.setSetting("quiet_hours_config", JSON.stringify(updated));
+        return reply.send({
+            ...updated,
+            isCurrentlyQuiet: isQuietHours(new Date())
+        });
     });
     // Google Tasks OAuth / Bridge Status
     app.get("/api/google/status", async (_req, reply) => {

@@ -112,6 +112,105 @@ function verifyDadPin() {
   }
 }
 
+let quietHoursState = {
+  enabled: true,
+  forceMute: false,
+  startTime: "22:00",
+  endTime: "06:00",
+  isCurrentlyQuiet: false
+};
+
+function formatShortTime(hhmm) {
+  const [hStr, mStr] = (hhmm || "00:00").split(":");
+  const h = parseInt(hStr, 10) || 0;
+  const m = parseInt(mStr, 10) || 0;
+  const suffix = h >= 12 ? "p" : "a";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return m === 0 ? `${h12}${suffix}` : `${h12}:${String(m).padStart(2, "0")}${suffix}`;
+}
+
+function updateQuietHoursChip() {
+  const chip = document.getElementById("chipQuiet");
+  const textEl = document.getElementById("chipQuietText");
+  if (!chip || !textEl) return;
+
+  if (quietHoursState.forceMute) {
+    chip.classList.add("active");
+    textEl.innerText = "Quiet: Muted";
+  } else if (quietHoursState.isCurrentlyQuiet) {
+    chip.classList.add("active");
+    textEl.innerText = "Quiet: ON";
+  } else if (quietHoursState.enabled) {
+    chip.classList.remove("active");
+    textEl.innerText = `Quiet: ${formatShortTime(quietHoursState.startTime)}–${formatShortTime(quietHoursState.endTime)}`;
+  } else {
+    chip.classList.remove("active");
+    textEl.innerText = "Quiet: Off";
+  }
+}
+
+async function loadQuietHours() {
+  try {
+    const res = await fetch("/api/settings/quiet-hours");
+    if (!res.ok) return;
+    quietHoursState = await res.json();
+    updateQuietHoursChip();
+  } catch (_) {}
+}
+
+function openQuietHoursModal() {
+  if (currentProfile !== "Dad") {
+    openProfileModal();
+    showDadPinPrompt();
+    return;
+  }
+
+  document.getElementById("chipForceMute").classList.toggle("active", Boolean(quietHoursState.forceMute));
+  document.getElementById("chipQuietEnabled").classList.toggle("active", Boolean(quietHoursState.enabled));
+  document.getElementById("inpQuietStart").value = quietHoursState.startTime || "22:00";
+  document.getElementById("inpQuietEnd").value = quietHoursState.endTime || "06:00";
+
+  const banner = document.getElementById("quietModalStatusBanner");
+  if (quietHoursState.isCurrentlyQuiet) {
+    banner.innerText = "🔇 Speakers are currently MUTED (Quiet Hours active).";
+    banner.style.borderColor = "var(--purple)";
+    banner.style.color = "#f5d0fe";
+    banner.style.background = "rgba(168, 85, 247, 0.15)";
+  } else {
+    banner.innerText = "🔊 Voice broadcasts are currently ACTIVE.";
+    banner.style.borderColor = "var(--green)";
+    banner.style.color = "#6ee7b7";
+    banner.style.background = "rgba(34, 197, 94, 0.12)";
+  }
+
+  document.getElementById("quietHoursModal").classList.add("open");
+}
+
+function closeQuietHoursModal() {
+  document.getElementById("quietHoursModal").classList.remove("open");
+}
+
+async function saveQuietHours() {
+  const forceMute = document.getElementById("chipForceMute").classList.contains("active");
+  const enabled = document.getElementById("chipQuietEnabled").classList.contains("active");
+  const startTime = document.getElementById("inpQuietStart").value || "22:00";
+  const endTime = document.getElementById("inpQuietEnd").value || "06:00";
+
+  try {
+    const res = await fetch("/api/settings/quiet-hours", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled, forceMute, startTime, endTime })
+    });
+    if (!res.ok) throw new Error("Failed to save quiet hours");
+    quietHoursState = await res.json();
+    updateQuietHoursChip();
+    closeQuietHoursModal();
+  } catch (e) {
+    alert("Error saving quiet hours: " + e.message);
+  }
+}
+
 async function loadTickets() {
   try {
     const res = await fetch("/api/tickets");
@@ -119,6 +218,7 @@ async function loadTickets() {
     tickets = await res.json();
     renderTickets();
     updateCounts();
+    loadQuietHours();
   } catch (e) {
     console.error("Error loading tickets:", e);
   }
@@ -815,6 +915,7 @@ window.addEventListener("DOMContentLoaded", () => {
     openProfileModal(true);
   }
   applyProfileUI();
+  loadQuietHours();
   loadTickets();
   setupPullToRefresh();
   setInterval(loadTickets, 30000); // 30s auto-refresh
