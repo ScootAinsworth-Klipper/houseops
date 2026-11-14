@@ -3,6 +3,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { calculateNextOccurrence, evaluateFloatingTickets } from "../core/scheduler.js";
 import { broadcastAnnouncement } from "../../daemon/announcer_client.js";
+import { runDaemonCycle } from "../daemon.js";
 export function registerRoutes(app, db, photoDir) {
     fs.mkdirSync(photoDir, { recursive: true });
     // Get all tickets
@@ -254,5 +255,24 @@ export function registerRoutes(app, db, photoDir) {
         const speaker = req.body?.speaker || "All Rooms";
         const ok = await broadcastAnnouncement(msg, speaker);
         return reply.send({ success: ok, message: msg, speaker });
+    });
+    // Google Tasks OAuth Status
+    app.get("/api/google/status", async (_req, reply) => {
+        const hasRefresh = Boolean(db.getSetting("google_refresh_token"));
+        const clientId = db.getSetting("google_client_id");
+        return reply.send({ connected: hasRefresh, hasClientConfig: Boolean(clientId) });
+    });
+    // Save Google OAuth Credentials / Refresh Token directly
+    app.post("/api/google/auth", async (req, reply) => {
+        const { clientId, clientSecret, refreshToken } = req.body || {};
+        if (clientId)
+            db.setSetting("google_client_id", clientId.trim());
+        if (clientSecret)
+            db.setSetting("google_client_secret", clientSecret.trim());
+        if (refreshToken)
+            db.setSetting("google_refresh_token", refreshToken.trim());
+        // Trigger immediate sync
+        await runDaemonCycle(db);
+        return reply.send({ success: true, connected: Boolean(db.getSetting("google_refresh_token")) });
     });
 }

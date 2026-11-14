@@ -1,4 +1,6 @@
-import { evaluateFloatingTickets } from "./core/scheduler.js";
+import crypto from "crypto";
+import { evaluateFloatingTickets, calculateNextOccurrence } from "./core/scheduler.js";
+import { createGoogleTasksClient, syncTicketToTasks } from "./sync/google.js";
 import { isQuietHours, broadcastAnnouncement } from "../daemon/announcer_client.js";
 export async function runDaemonCycle(db, options = {}) {
     const now = options.now || new Date();
@@ -10,6 +12,7 @@ export async function runDaemonCycle(db, options = {}) {
             const schedTime = new Date(ticket.nextScheduledAt).getTime();
             if (now.getTime() >= schedTime - 30 * 60 * 1000) {
                 ticket.currentStatus = "Pending";
+                ticket.googleTaskId = undefined; // Force fresh Google Task for new cycle
                 if (ticket.broadcast) {
                     delete ticket.broadcast.lastAnnouncedStage;
                     delete ticket.broadcast.lastAnnouncedAt;
@@ -84,16 +87,137 @@ export async function runDaemonCycle(db, options = {}) {
             announcedCount++;
         }
     }
+    // 3. Google Tasks 2-Way Sync & Standalone Google Home Voice Check-Off Poller
+    const clientId = db.getSetting("google_client_id");
+    const clientSecret = db.getSetting("google_client_secret");
+    const refreshToken = db.getSetting("google_refresh_token");
+    if (clientId && clientSecret && refreshToken) {
+        try {
+            const gClient = createGoogleTasksClient({ clientId, clientSecret, refreshToken });
+            const currentTickets = db.getTickets();
+            // 3a. Push any Pending tickets that don't yet have a Google Task ID
+            for (const t of currentTickets) {
+                if (t.currentStatus === "Pending" && !t.googleTaskId) {
+                    const gId = await syncTicketToTasks(gClient, "@default", t);
+                    if (gId) {
+                        t.googleTaskId = gId;
+                        db.saveTicket(t);
+                    }
+                }
+            }
+            // 3b. Poll Google Tasks for completions or voice-added phrases from Google Home speakers
+            const listRes = await gClient.tasks.list({ tasklist: "@default" });
+            const gTasks = listRes.data?.items || [];
+            const linkedTaskIds = new Set(currentTickets.map(t => t.googleTaskId).filter(Boolean));
+            for (const t of currentTickets) {
+                if (t.currentStatus === "Pending" && t.googleTaskId) {
+                    const matchedGTask = gTasks.find(g => g.id === t.googleTaskId);
+                    if (matchedGTask && matchedGTask.status === "completed") {
+                        const completedAt = new Date().toISOString();
+                        const actor = t.assignee || "Google Home";
+                        const audit = {
+                            id: `AUDIT-${crypto.randomUUID()}`,
+                            ticketId: t.id,
+                            completedAt,
+                            method: "Voice_Closed",
+                            notes: `🎙️ Checked off via Google Home ("${t.title}")`,
+                            actor
+                        };
+                        const nextDate = calculateNextOccurrence(t, new Date(completedAt));
+                        t.currentStatus = "Verified";
+                        t.lastCompletedAt = completedAt;
+                        t.nextScheduledAt = nextDate.toISOString();
+                        t.isFloated = false;
+                        db.completeTicketTransaction(t, audit);
+                        const person = actor === "Family" ? "everyone" : actor;
+                        const confirmMsg = `Awesome! ${t.title} is marked complete. Great job, ${person}!`;
+                        const speakers = t.broadcast?.speakers?.length ? t.broadcast.speakers : ["All Rooms"];
+                        await broadcastAnnouncement(confirmMsg, speakers);
+                    }
+                }
+            }
+            // 3c. Check unlinked voice tasks ("Hey Google, add a task: Camden fed the dogs")
+            const stopWords = new Set(["the", "a", "an", "to", "in", "on", "for", "of", "is", "are", "was", "were", "done", "finished", "complete", "completed", "did", "just", "i", "we", "he", "she", "camden", "sawyer", "dad", "please", "now", "right", "task", "chore", "with", "out", "up"]);
+            for (const g of gTasks) {
+                if (g.status === "needsAction" && !linkedTaskIds.has(g.id) && !(g.notes || "").includes("Ticket: TICK-")) {
+                    const rawTitle = (g.title || "").trim();
+                    if (!rawTitle)
+                        continue;
+                    const lower = rawTitle.toLowerCase();
+                    const spokenWords = lower.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length >= 2);
+                    let bestTicket = null;
+                    let bestScore = 0;
+                    for (const t of currentTickets) {
+                        const titleWords = t.title.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length >= 2 && !stopWords.has(w));
+                        let score = 0;
+                        for (const tw of titleWords) {
+                            if (spokenWords.some((sw) => sw === tw || (sw.length >= 3 && (tw.startsWith(sw) || sw.startsWith(tw))))) {
+                                score += 2;
+                            }
+                        }
+                        if (score > 0 && t.currentStatus === "Pending")
+                            score += 1;
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestTicket = t;
+                        }
+                    }
+                    if (bestTicket && bestScore >= 2) {
+                        let actor = bestTicket.assignee || "Google Home";
+                        if (lower.includes("sawyer"))
+                            actor = "Sawyer";
+                        else if (lower.includes("camden"))
+                            actor = "Camden";
+                        else if (lower.includes("dad"))
+                            actor = "Dad";
+                        const completedAt = new Date().toISOString();
+                        const audit = {
+                            id: `AUDIT-${crypto.randomUUID()}`,
+                            ticketId: bestTicket.id,
+                            completedAt,
+                            method: "Voice_Closed",
+                            notes: `🎙️ "${rawTitle}"`,
+                            actor
+                        };
+                        const nextDate = calculateNextOccurrence(bestTicket, new Date(completedAt));
+                        bestTicket.currentStatus = "Verified";
+                        bestTicket.lastCompletedAt = completedAt;
+                        bestTicket.nextScheduledAt = nextDate.toISOString();
+                        bestTicket.isFloated = false;
+                        db.completeTicketTransaction(bestTicket, audit);
+                        // Clean up the temporary voice-added task & mark linked Google Task completed
+                        try {
+                            await gClient.tasks.delete({ tasklist: "@default", task: g.id });
+                        }
+                        catch (_) { }
+                        if (bestTicket.googleTaskId) {
+                            try {
+                                await syncTicketToTasks(gClient, "@default", bestTicket);
+                            }
+                            catch (_) { }
+                        }
+                        const person = actor === "Family" ? "everyone" : actor;
+                        const confirmMsg = `Awesome! ${bestTicket.title} is marked complete. Great job, ${person}!`;
+                        const speakers = bestTicket.broadcast?.speakers?.length ? bestTicket.broadcast.speakers : ["All Rooms"];
+                        await broadcastAnnouncement(confirmMsg, speakers);
+                    }
+                }
+            }
+        }
+        catch (err) {
+            console.error("Google Tasks sync error:", err);
+        }
+    }
     return {
         floatedCount: floatingResult.floated.length,
         announcedCount
     };
 }
 let daemonTimer = null;
-export function startDaemon(db, intervalMs = 60000) {
+export function startDaemon(db, intervalMs = 20000) {
     if (daemonTimer)
         return;
-    console.log("⚡ HouseOps Background Scheduler Daemon active (polling every 60s)");
+    console.log(`⚡ HouseOps Background Scheduler & Google Tasks Daemon active (polling every ${Math.round(intervalMs / 1000)}s)`);
     daemonTimer = setInterval(() => {
         runDaemonCycle(db).catch(err => console.error("Daemon cycle error:", err));
     }, intervalMs);
