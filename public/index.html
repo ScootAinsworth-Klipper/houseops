@@ -55,8 +55,8 @@
     <div id="viewAudit" style="display:none; display:flex; flex-direction:column; gap:10px;"></div>
   </main>
 
-  <!-- Hidden native camera input for 1-tap verify -->
-  <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;" onchange="handlePhotoCaptured(this)">
+  <!-- Hidden native camera/file input for 1-tap verify -->
+  <input type="file" id="cameraInput" accept="image/*" style="display:none;" onchange="handlePhotoCaptured(this)">
 
   <!-- New Task Modal -->
   <div class="modal-backdrop" id="newTicketModal" onclick="if(event.target===this) closeNewTicketModal()">

@@ -1,5 +1,6 @@
 package com.scoot.houseops;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
@@ -10,6 +11,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -39,6 +42,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -49,6 +54,7 @@ public class MainActivity extends Activity {
     private static final String DEFAULT_URL = "http://192.168.1.82:8088";
     private static final String GITHUB_REPO_API = "https://api.github.com/repos/ScootAinsworth-Klipper/houseops/releases/latest";
     private static final int FILECHOOSER_RESULTCODE = 1001;
+    private static final int REQUEST_CAMERA_PERMISSION = 1002;
 
     private WebView webView;
     private FrameLayout rootLayout;
@@ -179,18 +185,7 @@ public class MainActivity extends Activity {
                     uploadMessage = null;
                 }
                 uploadMessage = filePathCallback;
-
-                try {
-                    Intent intent = fileChooserParams.createIntent();
-                    startActivityForResult(intent, FILECHOOSER_RESULTCODE);
-                } catch (Exception e) {
-                    Intent pickIntent = new Intent(Intent.ACTION_GET_CONTENT);
-                    pickIntent.setType("image/*");
-                    Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-                    Intent chooser = Intent.createChooser(pickIntent, "Capture Verification Photo");
-                    chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{cameraIntent});
-                    startActivityForResult(chooser, FILECHOOSER_RESULTCODE);
-                }
+                showPhotoSourceDialog();
                 return true;
             }
         });
@@ -512,6 +507,86 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void showPhotoSourceDialog() {
+        final String[] options = new String[]{
+            "📷 Take Photo with Camera",
+            "🖼️ Choose from Gallery / Files"
+        };
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("📸 Verify Task Completion");
+        builder.setItems(options, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                if (which == 0) {
+                    if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
+                    } else {
+                        launchCameraIntent();
+                    }
+                } else {
+                    launchFilePickerIntent();
+                }
+            }
+        });
+        builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                cancelUploadMessage();
+            }
+        });
+        builder.setOnCancelListener(new DialogInterface.OnCancelListener() {
+            @Override
+            public void onCancel(DialogInterface dialog) {
+                cancelUploadMessage();
+            }
+        });
+        builder.show();
+    }
+
+    private void launchCameraIntent() {
+        try {
+            Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            startActivityForResult(cameraIntent, FILECHOOSER_RESULTCODE);
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not launch Camera: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            cancelUploadMessage();
+        }
+    }
+
+    private void launchFilePickerIntent() {
+        try {
+            Intent pickIntent = new Intent(Intent.ACTION_GET_CONTENT);
+            pickIntent.addCategory(Intent.CATEGORY_OPENABLE);
+            pickIntent.setType("image/*");
+            startActivityForResult(Intent.createChooser(pickIntent, "Select Verification Image"), FILECHOOSER_RESULTCODE);
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not open file picker: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            cancelUploadMessage();
+        }
+    }
+
+    private void cancelUploadMessage() {
+        if (uploadMessage != null) {
+            uploadMessage.onReceiveValue(null);
+            uploadMessage = null;
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == REQUEST_CAMERA_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                launchCameraIntent();
+            } else {
+                Toast.makeText(this, "Camera permission is required to take verification photos", Toast.LENGTH_SHORT).show();
+                cancelUploadMessage();
+            }
+        } else {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == FILECHOOSER_RESULTCODE) {
@@ -521,11 +596,26 @@ public class MainActivity extends Activity {
                 String dataString = data.getDataString();
                 if (dataString != null) {
                     results = new Uri[]{Uri.parse(dataString)};
-                } else if (data.getClipData() != null) {
+                } else if (data.getClipData() != null && data.getClipData().getItemCount() > 0) {
                     int numSelected = data.getClipData().getItemCount();
                     results = new Uri[numSelected];
                     for (int i = 0; i < numSelected; i++) {
                         results[i] = data.getClipData().getItemAt(i).getUri();
+                    }
+                } else if (data.getExtras() != null) {
+                    Object bmpObj = data.getExtras().get("data");
+                    if (bmpObj instanceof Bitmap) {
+                        try {
+                            Bitmap bmp = (Bitmap) bmpObj;
+                            File cacheFile = new File(getCacheDir(), "verify_" + System.currentTimeMillis() + ".jpg");
+                            FileOutputStream fos = new FileOutputStream(cacheFile);
+                            bmp.compress(Bitmap.CompressFormat.JPEG, 92, fos);
+                            fos.flush();
+                            fos.close();
+                            results = new Uri[]{Uri.fromFile(cacheFile)};
+                        } catch (Exception e) {
+                            Toast.makeText(this, "Error saving camera photo: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
                     }
                 }
             }
