@@ -7,6 +7,7 @@ generates spoken audio via Google Text-to-Speech (gTTS), and streams to the spea
 
 import sys
 import os
+import json
 import time
 import argparse
 import socket
@@ -15,10 +16,113 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 try:
     import pychromecast
+    from pychromecast.discovery import CastBrowser, SimpleCastListener
     from gtts import gTTS
     HAS_LIBS = True
 except ImportError:
     HAS_LIBS = False
+
+CAST_HOSTS_CACHE_PATH = "/tmp/houseops_cast_hosts.json"
+ANNOUNCEMENT_MIN_VOLUME = 0.90
+
+def _load_cached_hosts():
+    try:
+        with open(CAST_HOSTS_CACHE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return {str(k).lower(): str(v) for k, v in data.items() if v}
+    except Exception:
+        pass
+    return {}
+
+def _save_cached_hosts(host_map):
+    try:
+        with open(CAST_HOSTS_CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(host_map, f)
+    except Exception:
+        pass
+
+def _discover_chromecasts(wanted_names, discovery_timeout=10.0):
+    """Discover Cast devices via CastBrowser + cached hosts, stopping once all wanted names arrive."""
+    cached_map = _load_cached_hosts()
+    known_hosts = None
+    if wanted_names:
+        matched_hosts = [cached_map[n] for n in wanted_names if n in cached_map]
+        if len(matched_hosts) == len(wanted_names):
+            known_hosts = list(dict.fromkeys(matched_hosts))
+    if not known_hosts and cached_map:
+        known_hosts = list(dict.fromkeys(cached_map.values()))
+
+    wanted_set = set(wanted_names)
+    lock = threading.Lock()
+    discovered_by_uuid = {}
+    discover_complete = threading.Event()
+    zconf = pychromecast.create_zeroconf()
+
+    def on_cast_event(uuid, _service):
+        info = browser.devices.get(uuid)
+        if not info:
+            return
+        with lock:
+            discovered_by_uuid[uuid] = info
+            if wanted_set:
+                found_names = {d.friendly_name.lower() for d in discovered_by_uuid.values() if d.friendly_name}
+                if wanted_set.issubset(found_names):
+                    discover_complete.set()
+
+    browser = CastBrowser(SimpleCastListener(on_cast_event), zconf, known_hosts=known_hosts)
+    browser.start_discovery()
+    wait_limit = discovery_timeout if wanted_set else min(discovery_timeout, 6.0)
+    discover_complete.wait(wait_limit)
+
+    with lock:
+        infos = list(discovered_by_uuid.values())
+
+    updated_cache = dict(cached_map)
+    for info in infos:
+        if info.friendly_name and info.host:
+            updated_cache[info.friendly_name.lower()] = info.host
+    _save_cached_hosts(updated_cache)
+
+    target_infos = []
+    if wanted_names:
+        by_name = {info.friendly_name.lower(): info for info in infos if info.friendly_name}
+        for name in wanted_names:
+            if name in by_name:
+                target_infos.append(by_name[name])
+        missing = [n for n in wanted_names if n not in by_name]
+        if missing:
+            print(f"[Announcer] Warning: did not discover requested speaker(s): {missing}", file=sys.stderr)
+    else:
+        for info in infos:
+            if info.friendly_name and info.friendly_name.lower() in ["all rooms", "everywhere", "all speakers", "house"]:
+                target_infos.append(info)
+                break
+        if not target_infos:
+            for info in infos:
+                if "group" in (info.model_name or "").lower():
+                    target_infos.append(info)
+                    break
+        if not target_infos:
+            tv_keywords = ["tv", "onn", "shield", "telly", "display"]
+            for info in infos:
+                name_l = (info.friendly_name or "").lower()
+                model_l = (info.model_name or "").lower()
+                if not any(k in name_l or k in model_l for k in tv_keywords):
+                    target_infos.append(info)
+                    break
+        if not target_infos and infos:
+            target_infos.append(infos[0])
+
+    chromecasts = []
+    for info in target_infos:
+        try:
+            cc = pychromecast.get_chromecast_from_cast_info(info, zconf, tries=3, retry_wait=1.0, timeout=8)
+            chromecasts.append(cc)
+        except Exception as e:
+            print(f"[Announcer] Connect error for {info.friendly_name}: {e}", file=sys.stderr)
+
+    return chromecasts, browser
 
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -72,68 +176,52 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
         local_ip = get_local_ip()
         media_url = f"http://{local_ip}:{actual_port}/{filename}"
 
-        # Discover Cast devices quickly (4s mDNS window)
-        chromecasts, browser = pychromecast.get_chromecasts(timeout=4)
-        target_casts = []
-
+        wanted_names = []
         if speaker_name:
             if isinstance(speaker_name, str):
-                names = [s.strip().lower() for s in speaker_name.split(",") if s.strip()]
+                wanted_names = [s.strip().lower() for s in speaker_name.split(",") if s.strip()]
             else:
-                names = [s.strip().lower() for s in speaker_name if s.strip()]
+                wanted_names = [s.strip().lower() for s in speaker_name if s.strip()]
 
-            for cast in chromecasts:
-                if cast.name.lower() in names:
-                    target_casts.append(cast)
-
-        # Fallback 1: Prefer "All Rooms" or any Google Cast Group
-        if not target_casts:
-            for cast in chromecasts:
-                if cast.name.lower() in ["all rooms", "everywhere", "all speakers", "house"]:
-                    target_casts.append(cast)
-                    break
-
-        if not target_casts:
-            for cast in chromecasts:
-                if "group" in cast.model_name.lower():
-                    target_casts.append(cast)
-                    break
-
-        # Fallback 2: Exclude TVs/streamers (onn, shield, tv, telly) and pick first real audio speaker
-        if not target_casts:
-            tv_keywords = ["tv", "onn", "shield", "telly", "display"]
-            for cast in chromecasts:
-                name_l = cast.name.lower()
-                model_l = cast.model_name.lower()
-                if not any(k in name_l or k in model_l for k in tv_keywords):
-                    target_casts.append(cast)
-                    break
-
-        if not target_casts and len(chromecasts) > 0:
-            target_casts.append(chromecasts[0])
+        target_casts, browser = _discover_chromecasts(wanted_names, discovery_timeout=10.0)
 
         if not target_casts:
             print("[Announcer] No Google Cast / Nest speakers discovered on local network.")
             return False
 
         orig_volumes = {}
+        vol_lock = threading.Lock()
+
+        def ensure_announcement_volume(cast_dev):
+            try:
+                if cast_dev.status is None:
+                    time.sleep(0.2)
+                cur_vol = getattr(cast_dev.status, "volume_level", None) if cast_dev.status else None
+                cur_muted = bool(getattr(cast_dev.status, "volume_muted", False)) if cast_dev.status else False
+                needs_unmute = cur_muted
+                needs_boost = cur_vol is None or float(cur_vol) < ANNOUNCEMENT_MIN_VOLUME - 0.02
+                if (needs_unmute or needs_boost) and cur_vol is not None:
+                    with vol_lock:
+                        if cast_dev not in orig_volumes:
+                            orig_volumes[cast_dev] = (float(cur_vol), cur_muted)
+                if needs_unmute:
+                    cast_dev.set_volume_muted(False)
+                if needs_boost:
+                    cast_dev.set_volume(ANNOUNCEMENT_MIN_VOLUME)
+                    time.sleep(0.2)
+                    print(f"[Announcer] Volume boosted on {cast_dev.name}: {cur_vol} -> {ANNOUNCEMENT_MIN_VOLUME:.2f}")
+            except Exception as ve:
+                print(f"[Announcer] Volume adjust error on {cast_dev.name}: {ve}", file=sys.stderr)
 
         def play_on_cast(cast_dev):
             try:
-                cast_dev.wait(timeout=5)
-                try:
-                    cur_vol = getattr(cast_dev.status, "volume_level", None)
-                    if cur_vol is not None:
-                        orig_volumes[cast_dev] = float(cur_vol)
-                        if float(cur_vol) < 0.72:
-                            cast_dev.set_volume(0.72)
-                            time.sleep(0.15)
-                except Exception:
-                    pass
+                cast_dev.wait(timeout=8)
+                ensure_announcement_volume(cast_dev)
 
                 mc = cast_dev.media_controller
                 mc.play_media(media_url, "audio/mp3")
-                mc.block_until_active(timeout=5)
+                mc.block_until_active(timeout=6)
+                ensure_announcement_volume(cast_dev)
             except Exception as e:
                 print(f"[Announcer] Error on {cast_dev.name}: {e}", file=sys.stderr)
 
@@ -144,21 +232,23 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
             threads.append(t)
 
         for t in threads:
-            t.join(timeout=8)
+            t.join(timeout=12)
 
         # Wait long enough for full message playback based on character count
         wait_secs = max(8.0, min(25.0, len(text) * 0.09 + 3.5))
         print(f"[Announcer] Playing '{text}' on {[c.name for c in target_casts]} (hold {wait_secs:.1f}s)")
         time.sleep(wait_secs)
 
-        # Restore previous speaker volumes so normal music levels stay unchanged
-        for cast_dev, prev_vol in orig_volumes.items():
+        # Restore previous speaker volumes/mute states so normal levels stay unchanged
+        for cast_dev, (prev_vol, prev_muted) in orig_volumes.items():
             try:
                 cast_dev.set_volume(prev_vol)
-            except Exception:
-                pass
+                if prev_muted:
+                    cast_dev.set_volume_muted(True)
+            except Exception as re:
+                print(f"[Announcer] Volume restore error on {cast_dev.name}: {re}", file=sys.stderr)
         if orig_volumes:
-            time.sleep(0.25)
+            time.sleep(0.3)
         return True
     except Exception as e:
         print(f"[Announcer] Cast playback error: {e}", file=sys.stderr)
@@ -166,7 +256,7 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
     finally:
         if browser:
             try:
-                pychromecast.discovery.stop_discovery(browser)
+                browser.stop_discovery()
             except Exception:
                 pass
         if server:
