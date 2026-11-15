@@ -5,6 +5,7 @@ import { evaluateFloatingTickets, calculateNextOccurrence } from "./core/schedul
 import { createGoogleTasksClient, syncTicketToTasks } from "./sync/google.js";
 import { isQuietHours, broadcastAnnouncement } from "../daemon/announcer_client.js";
 import { parseMenuVoiceQuery, announceSchoolMenu } from "./core/school_menu.js";
+import { parseMediaVoiceQuery, dispatchMediaVoiceDownload } from "./core/media_relay.js";
 import { checkSmartThingsVirtualSwitchTrigger } from "./sync/smartthings.js";
 export async function runDaemonCycle(db, options = {}) {
     const now = options.now || new Date();
@@ -172,6 +173,19 @@ export async function runDaemonCycle(db, options = {}) {
                     const rawTitle = (g.title || "").trim();
                     if (!rawTitle)
                         continue;
+                    // Intercept Media Voice Relay (TorrentRelay) queries first
+                    const mediaQuery = parseMediaVoiceQuery(rawTitle);
+                    const mediaRelayUrl = db.getSetting("media_relay_url");
+                    if (mediaQuery && mediaRelayUrl) {
+                        try {
+                            await gClient.tasks.delete({ tasklist: "@default", task: g.id });
+                        }
+                        catch (_) { }
+                        const mediaRelayKey = db.getSetting("media_relay_key") || "";
+                        const spokenMessage = await dispatchMediaVoiceDownload(mediaQuery, { url: mediaRelayUrl, apiKey: mediaRelayKey });
+                        await announcer(spokenMessage);
+                        continue;
+                    }
                     // Intercept School Lunch / Breakfast / Menu Routine triggers first
                     const menuQuery = parseMenuVoiceQuery(rawTitle);
                     if (menuQuery) {
