@@ -32,7 +32,6 @@ except ImportError:
     HAS_LIBS = False
 
 CAST_HOSTS_CACHE_PATH = "/tmp/houseops_cast_hosts.json"
-ANNOUNCEMENT_MIN_VOLUME = 0.90
 
 def _load_cached_hosts():
     try:
@@ -242,42 +241,9 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
             print("[Announcer] No Google Cast / Nest speakers discovered on local network.")
             return False
 
-        orig_volumes = {}
-        vol_lock = threading.Lock()
-
-        def _target_volume_for(cast_dev):
-            name_l = (cast_dev.name or "").lower()
-            model_l = (getattr(cast_dev, "model_name", "") or "").lower()
-            if "display" in name_l or "hub" in model_l:
-                return 1.0
-            return 0.80
-
-        def ensure_announcement_volume(cast_dev):
-            try:
-                if cast_dev.status is None:
-                    time.sleep(0.2)
-                target_vol = _target_volume_for(cast_dev)
-                cur_vol = getattr(cast_dev.status, "volume_level", None) if cast_dev.status else None
-                cur_muted = bool(getattr(cast_dev.status, "volume_muted", False)) if cast_dev.status else False
-                needs_unmute = cur_muted
-                needs_boost = cur_vol is None or float(cur_vol) < target_vol - 0.02
-                if (needs_unmute or needs_boost) and cur_vol is not None:
-                    with vol_lock:
-                        if cast_dev not in orig_volumes:
-                            orig_volumes[cast_dev] = (float(cur_vol), cur_muted)
-                if needs_unmute:
-                    cast_dev.set_volume_muted(False)
-                if needs_boost:
-                    cast_dev.set_volume(target_vol)
-                    time.sleep(0.2)
-                    print(f"[Announcer] Volume boosted on {cast_dev.name}: {cur_vol} -> {target_vol:.2f}")
-            except Exception as ve:
-                print(f"[Announcer] Volume adjust error on {cast_dev.name}: {ve}", file=sys.stderr)
-
         def play_on_cast(cast_dev):
             try:
                 cast_dev.wait(timeout=8)
-                ensure_announcement_volume(cast_dev)
 
                 mc = cast_dev.media_controller
                 mc.play_media(
@@ -287,7 +253,6 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
                     title="HouseOps Announcement",
                 )
                 mc.block_until_active(timeout=6)
-                ensure_announcement_volume(cast_dev)
             except Exception as e:
                 print(f"[Announcer] Error on {cast_dev.name}: {e}", file=sys.stderr)
 
@@ -304,17 +269,6 @@ def speak(text, speaker_name=None, port=0, temp_dir="/tmp/houseops_audio"):
         wait_secs = max(8.0, min(25.0, len(text) * 0.09 + 3.5))
         print(f"[Announcer] Playing '{text}' on {[c.name for c in target_casts]} (hold {wait_secs:.1f}s)")
         time.sleep(wait_secs)
-
-        # Restore previous speaker volumes/mute states so normal levels stay unchanged
-        for cast_dev, (prev_vol, prev_muted) in orig_volumes.items():
-            try:
-                cast_dev.set_volume(prev_vol)
-                if prev_muted:
-                    cast_dev.set_volume_muted(True)
-            except Exception as re:
-                print(f"[Announcer] Volume restore error on {cast_dev.name}: {re}", file=sys.stderr)
-        if orig_volumes:
-            time.sleep(0.3)
         return True
     except Exception as e:
         print(f"[Announcer] Cast playback error: {e}", file=sys.stderr)
