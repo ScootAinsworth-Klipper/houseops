@@ -48,6 +48,16 @@ describe("HouseOps Media Voice Relay", () => {
       downFetch as any
     );
     expect(offlineMsg).toContain("offline");
+
+    const timeoutErr = new Error("The operation was aborted due to timeout");
+    timeoutErr.name = "TimeoutError";
+    const slowFetch = vi.fn().mockRejectedValue(timeoutErr);
+    const timeoutMsg = await dispatchMediaVoiceDownload(
+      "Inception",
+      { url: "http://192.168.1.50:8090", apiKey: "k1" },
+      slowFetch as any
+    );
+    expect(timeoutMsg).toContain("took too long");
   });
 
   describe("Daemon Cycle Integration", () => {

@@ -43,7 +43,7 @@ export async function dispatchMediaVoiceDownload(query, config, fetchFn = fetch)
                 "X-Relay-Key": config.apiKey || "",
             },
             body: JSON.stringify({ query: trimmedQuery }),
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(45000),
         });
         const data = await res.json().catch(() => null);
         if (data && typeof data.spokenMessage === "string" && data.spokenMessage.trim().length > 0) {
@@ -57,7 +57,12 @@ export async function dispatchMediaVoiceDownload(query, config, fetchFn = fetch)
         }
         return "Media download request sent.";
     }
-    catch (_err) {
+    catch (err) {
+        console.error("[MediaRelay] voice-download error:", err);
+        const errName = err?.name;
+        if (errName === "TimeoutError" || errName === "AbortError") {
+            return "The media server took too long to respond. Check Deluge to see if the download started.";
+        }
         return "Your media server appears to be offline right now.";
     }
 }
