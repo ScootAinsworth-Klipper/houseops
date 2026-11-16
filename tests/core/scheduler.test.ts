@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculateNextOccurrence, evaluateFloatingTickets } from "../../src/core/scheduler";
+import { calculateNextOccurrence, evaluateFloatingTickets, HOUSEHOLD_TIMEZONE } from "../../src/core/scheduler";
 import { HouseTicket } from "../../src/core/types";
 
 describe("HouseOps Scheduler", () => {
@@ -120,5 +120,41 @@ describe("HouseOps Scheduler", () => {
     const result = evaluateFloatingTickets([onDemandTicket], now);
     expect(result.floated).toHaveLength(0);
     expect(result.updated).toHaveLength(0);
+  });
+
+  it("anchors preferredWindow hour/minute in America/Chicago (not UTC) across CST/CDT", () => {
+    const laundry: HouseTicket = {
+      id: "TICK-LAUNDRY",
+      title: "Start a load of laundry",
+      category: "Laundry",
+      priority: "P1-Urgent",
+      recurrence: { type: "Daily", baseOnCompletion: false },
+      preferredWindow: { startHour: 12, startMinute: 15, durationMinutes: 60 },
+      currentStatus: "Pending",
+      // Yesterday Nov 15 12:15 PM CST = 18:15 UTC
+      nextScheduledAt: "2026-11-15T18:15:00.000Z"
+    };
+
+    // At 6:15 AM CST (12:15Z) on Nov 16, it IS past yesterday's window -> should float to 12:15 PM CST TODAY (18:15Z), NOT 6:15 AM CST!
+    const earlyMorningCst = new Date("2026-11-16T12:15:00.000Z");
+    const floated = evaluateFloatingTickets([laundry], earlyMorningCst, HOUSEHOLD_TIMEZONE);
+    expect(floated.floated).toEqual(["TICK-LAUNDRY"]);
+    expect(floated.updated[0].nextScheduledAt).toBe("2026-11-16T18:15:00.000Z");
+
+    // If already scheduled for today 12:15 PM CST (18:15Z), 6:15 AM CST must NOT float it
+    const todayTicket: HouseTicket = {
+      ...laundry,
+      nextScheduledAt: "2026-11-16T18:15:00.000Z"
+    };
+    const notDueYet = evaluateFloatingTickets([todayTicket], earlyMorningCst, HOUSEHOLD_TIMEZONE);
+    expect(notDueYet.floated).toHaveLength(0);
+
+    // Completing at 12:30 PM CST (18:30Z) schedules tomorrow 12:15 PM CST (18:15Z)
+    const nextCst = calculateNextOccurrence(laundry, new Date("2026-11-16T18:30:00.000Z"), HOUSEHOLD_TIMEZONE);
+    expect(nextCst.toISOString()).toBe("2026-11-17T18:15:00.000Z");
+
+    // In summer CDT (UTC-5, e.g., July 10), 12:15 PM CDT = 17:15 UTC
+    const nextCdt = calculateNextOccurrence(laundry, new Date("2026-07-10T17:30:00.000Z"), HOUSEHOLD_TIMEZONE);
+    expect(nextCdt.toISOString()).toBe("2026-07-11T17:15:00.000Z");
   });
 });

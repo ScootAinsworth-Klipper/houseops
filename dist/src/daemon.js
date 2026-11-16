@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { evaluateFloatingTickets, calculateNextOccurrence } from "./core/scheduler.js";
+import { evaluateFloatingTickets, calculateNextOccurrence, HOUSEHOLD_TIMEZONE } from "./core/scheduler.js";
 import { createGoogleTasksClient, syncTicketToTasks } from "./sync/google.js";
 import { isQuietHours, broadcastAnnouncement } from "../daemon/announcer_client.js";
 import { parseMenuVoiceQuery, announceSchoolMenu } from "./core/school_menu.js";
@@ -28,7 +28,7 @@ export async function runDaemonCycle(db, options = {}) {
         }
     }
     // 1. Evaluate & float slipped tickets
-    const floatingResult = evaluateFloatingTickets(tickets, now);
+    const floatingResult = evaluateFloatingTickets(tickets, now, HOUSEHOLD_TIMEZONE);
     for (const updated of floatingResult.updated) {
         db.saveTicket(updated);
         db.queueSync("float_ticket", updated.id, { nextScheduledAt: updated.nextScheduledAt });
@@ -151,7 +151,7 @@ export async function runDaemonCycle(db, options = {}) {
                             notes: `🎙️ Checked off via Google Home ("${t.title}")`,
                             actor
                         };
-                        const nextDate = calculateNextOccurrence(t, new Date(completedAt));
+                        const nextDate = calculateNextOccurrence(t, new Date(completedAt), HOUSEHOLD_TIMEZONE);
                         t.currentStatus = "Verified";
                         t.lastCompletedAt = completedAt;
                         t.nextScheduledAt = nextDate.toISOString();
@@ -236,7 +236,7 @@ export async function runDaemonCycle(db, options = {}) {
                             notes: `🎙️ "${rawTitle}"`,
                             actor
                         };
-                        const nextDate = calculateNextOccurrence(bestTicket, new Date(completedAt));
+                        const nextDate = calculateNextOccurrence(bestTicket, new Date(completedAt), HOUSEHOLD_TIMEZONE);
                         bestTicket.currentStatus = "Verified";
                         bestTicket.lastCompletedAt = completedAt;
                         bestTicket.nextScheduledAt = nextDate.toISOString();

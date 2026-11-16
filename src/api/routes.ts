@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { HouseOpsDatabase } from "../db/database.js";
-import { calculateNextOccurrence, evaluateFloatingTickets } from "../core/scheduler.js";
+import { calculateNextOccurrence, evaluateFloatingTickets, HOUSEHOLD_TIMEZONE } from "../core/scheduler.js";
 import { HouseTicket, CompletionRecord, CompletionMethod } from "../core/types.js";
 import { broadcastAnnouncement, getQuietHoursConfig, setQuietHoursConfig, isQuietHours, QuietHoursConfig } from "../../daemon/announcer_client.js";
 import { createGoogleTasksClient } from "../sync/google.js";
@@ -190,7 +190,7 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
       actor
     };
 
-    const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
+    const nextDate = calculateNextOccurrence(ticket, new Date(completedAt), HOUSEHOLD_TIMEZONE);
 
     ticket.currentStatus = "Verified";
     ticket.lastCompletedAt = completedAt;
@@ -253,7 +253,7 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
       };
 
       // 2. Calculate next occurrence
-      const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
+      const nextDate = calculateNextOccurrence(ticket, new Date(completedAt), HOUSEHOLD_TIMEZONE);
 
       // 3. Update ticket state atomically
       ticket.currentStatus = "Verified";
@@ -371,7 +371,7 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
       actor
     };
 
-    const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
+    const nextDate = calculateNextOccurrence(ticket, new Date(completedAt), HOUSEHOLD_TIMEZONE);
     ticket.currentStatus = "Verified";
     ticket.lastCompletedAt = completedAt;
     ticket.nextScheduledAt = nextDate.toISOString();
@@ -407,7 +407,7 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
   // Evaluate and float overdue pending chores
   app.post("/api/scheduler/float", async (_req, reply) => {
     const tickets = db.getTickets();
-    const result = evaluateFloatingTickets(tickets, new Date());
+    const result = evaluateFloatingTickets(tickets, new Date(), HOUSEHOLD_TIMEZONE);
     for (const updated of result.updated) {
       db.saveTicket(updated);
     }

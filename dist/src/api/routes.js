@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import { calculateNextOccurrence, evaluateFloatingTickets } from "../core/scheduler.js";
+import { calculateNextOccurrence, evaluateFloatingTickets, HOUSEHOLD_TIMEZONE } from "../core/scheduler.js";
 import { broadcastAnnouncement, getQuietHoursConfig, setQuietHoursConfig, isQuietHours } from "../../daemon/announcer_client.js";
 import { createGoogleTasksClient } from "../sync/google.js";
 import { runDaemonCycle } from "../daemon.js";
@@ -161,7 +161,7 @@ export function registerRoutes(app, db, photoDir) {
             notes: `🎙️ "${spokenText}"`,
             actor
         };
-        const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
+        const nextDate = calculateNextOccurrence(ticket, new Date(completedAt), HOUSEHOLD_TIMEZONE);
         ticket.currentStatus = "Verified";
         ticket.lastCompletedAt = completedAt;
         ticket.nextScheduledAt = nextDate.toISOString();
@@ -207,7 +207,7 @@ export function registerRoutes(app, db, photoDir) {
             actor
         };
         // 2. Calculate next occurrence
-        const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
+        const nextDate = calculateNextOccurrence(ticket, new Date(completedAt), HOUSEHOLD_TIMEZONE);
         // 3. Update ticket state atomically
         ticket.currentStatus = "Verified";
         ticket.lastCompletedAt = completedAt;
@@ -293,7 +293,7 @@ export function registerRoutes(app, db, photoDir) {
             photoPath: `/photos/${filename}`,
             actor
         };
-        const nextDate = calculateNextOccurrence(ticket, new Date(completedAt));
+        const nextDate = calculateNextOccurrence(ticket, new Date(completedAt), HOUSEHOLD_TIMEZONE);
         ticket.currentStatus = "Verified";
         ticket.lastCompletedAt = completedAt;
         ticket.nextScheduledAt = nextDate.toISOString();
@@ -320,7 +320,7 @@ export function registerRoutes(app, db, photoDir) {
     // Evaluate and float overdue pending chores
     app.post("/api/scheduler/float", async (_req, reply) => {
         const tickets = db.getTickets();
-        const result = evaluateFloatingTickets(tickets, new Date());
+        const result = evaluateFloatingTickets(tickets, new Date(), HOUSEHOLD_TIMEZONE);
         for (const updated of result.updated) {
             db.saveTicket(updated);
         }

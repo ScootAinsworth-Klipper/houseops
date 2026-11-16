@@ -1,33 +1,106 @@
+export const HOUSEHOLD_TIMEZONE = "America/Chicago";
+const WEEKDAY_MAP = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+};
+function getZonedParts(date, timeZone) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    }).formatToParts(date);
+    const get = (type) => parts.find((p) => p.type === type)?.value || "0";
+    const rawHour = parseInt(get("hour"), 10);
+    return {
+        year: parseInt(get("year"), 10),
+        month: parseInt(get("month"), 10),
+        day: parseInt(get("day"), 10),
+        weekday: WEEKDAY_MAP[get("weekday")] ?? 0,
+        hour: rawHour === 24 ? 0 : rawHour,
+        minute: parseInt(get("minute"), 10),
+    };
+}
+function zonedWallTimeToUtc(year, month, day, hour, minute, timeZone) {
+    const utcGuess = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+    const offsetAt = (d) => {
+        const p = getZonedParts(d, timeZone);
+        return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, 0, 0) - d.getTime();
+    };
+    const pass1 = new Date(utcGuess - offsetAt(new Date(utcGuess)));
+    return new Date(utcGuess - offsetAt(pass1));
+}
+function getCalendarParts(date, zoneOption) {
+    if (typeof zoneOption === "string") {
+        return getZonedParts(date, zoneOption);
+    }
+    if (zoneOption === false) {
+        return {
+            year: date.getFullYear(),
+            month: date.getMonth() + 1,
+            day: date.getDate(),
+            weekday: date.getDay(),
+            hour: date.getHours(),
+            minute: date.getMinutes(),
+        };
+    }
+    return {
+        year: date.getUTCFullYear(),
+        month: date.getUTCMonth() + 1,
+        day: date.getUTCDate(),
+        weekday: date.getUTCDay(),
+        hour: date.getUTCHours(),
+        minute: date.getUTCMinutes(),
+    };
+}
+function wallTimeToDate(year, month, day, hour, minute, zoneOption) {
+    if (typeof zoneOption === "string") {
+        return zonedWallTimeToUtc(year, month, day, hour, minute, zoneOption);
+    }
+    if (zoneOption === false) {
+        return new Date(year, month - 1, day, hour, minute, 0, 0);
+    }
+    return new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
+}
 /**
  * Calculates the next occurrence timestamp for a ticket based on completion time or previous schedule.
  */
-export function calculateNextOccurrence(ticket, referenceDate = new Date()) {
-    const baseDate = new Date(referenceDate);
-    const next = new Date(baseDate);
+export function calculateNextOccurrence(ticket, referenceDate = new Date(), zoneOption = true) {
+    if (ticket.recurrence.type === "OnDemand") {
+        return new Date(referenceDate);
+    }
+    const startHour = ticket.preferredWindow.startHour;
     const startMinute = ticket.preferredWindow.startMinute || 0;
+    const baseParts = getCalendarParts(referenceDate, zoneOption);
+    const scratch = new Date(Date.UTC(baseParts.year, baseParts.month - 1, baseParts.day, 12, 0, 0, 0));
     switch (ticket.recurrence.type) {
         case "Daily":
-            next.setUTCDate(next.getUTCDate() + 1);
+            scratch.setUTCDate(scratch.getUTCDate() + 1);
             break;
         case "Weekdays": {
-            let candidate = new Date(baseDate);
             for (let i = 1; i <= 7; i++) {
-                candidate.setUTCDate(candidate.getUTCDate() + 1);
-                const day = candidate.getUTCDay();
+                scratch.setUTCDate(scratch.getUTCDate() + 1);
+                const day = scratch.getUTCDay();
                 if (day >= 1 && day <= 5) {
-                    next.setTime(candidate.getTime());
                     break;
                 }
             }
             break;
         }
         case "Weekends": {
-            let candidate = new Date(baseDate);
             for (let i = 1; i <= 7; i++) {
-                candidate.setUTCDate(candidate.getUTCDate() + 1);
-                const day = candidate.getUTCDay();
+                scratch.setUTCDate(scratch.getUTCDate() + 1);
+                const day = scratch.getUTCDay();
                 if (day === 0 || day === 6) {
-                    next.setTime(candidate.getTime());
                     break;
                 }
             }
@@ -37,33 +110,27 @@ export function calculateNextOccurrence(ticket, referenceDate = new Date()) {
             const allowed = ticket.recurrence.daysOfWeek && ticket.recurrence.daysOfWeek.length > 0
                 ? ticket.recurrence.daysOfWeek
                 : [1, 2, 3, 4, 5];
-            let candidate = new Date(baseDate);
             for (let i = 1; i <= 7; i++) {
-                candidate.setUTCDate(candidate.getUTCDate() + 1);
-                const day = candidate.getUTCDay();
-                if (allowed.includes(day)) {
-                    next.setTime(candidate.getTime());
+                scratch.setUTCDate(scratch.getUTCDate() + 1);
+                if (allowed.includes(scratch.getUTCDay())) {
                     break;
                 }
             }
             break;
         }
         case "Weekly":
-            next.setUTCDate(next.getUTCDate() + 7);
+            scratch.setUTCDate(scratch.getUTCDate() + 7);
             break;
         case "Monthly":
-            next.setUTCMonth(next.getUTCMonth() + 1);
+            scratch.setUTCMonth(scratch.getUTCMonth() + 1);
             break;
-        case "IntervalDays":
+        case "IntervalDays": {
             const days = ticket.recurrence.intervalDays || 1;
-            next.setUTCDate(next.getUTCDate() + days);
+            scratch.setUTCDate(scratch.getUTCDate() + days);
             break;
-        case "OnDemand":
-            return new Date(referenceDate);
+        }
     }
-    // Anchor to preferred window hour & minute (in UTC)
-    next.setUTCHours(ticket.preferredWindow.startHour, startMinute, 0, 0);
-    return next;
+    return wallTimeToDate(scratch.getUTCFullYear(), scratch.getUTCMonth() + 1, scratch.getUTCDate(), startHour, startMinute, zoneOption);
 }
 function getAllowedDays(ticket) {
     if (ticket.recurrence.type === "Weekdays")
@@ -78,7 +145,7 @@ function getAllowedDays(ticket) {
  * Scans pending tickets to identify any whose scheduled window has passed without completion,
  * floating them forward to the next available designated chore window without duplication.
  */
-export function evaluateFloatingTickets(tickets, now = new Date(), useUtc = true) {
+export function evaluateFloatingTickets(tickets, now = new Date(), zoneOption = true) {
     const updated = [];
     const floated = [];
     for (const ticket of tickets) {
@@ -88,42 +155,28 @@ export function evaluateFloatingTickets(tickets, now = new Date(), useUtc = true
         const windowEndTime = new Date(scheduledTime.getTime() + ticket.preferredWindow.durationMinutes * 60 * 1000);
         // If window has passed
         if (now.getTime() > windowEndTime.getTime()) {
-            const nextWindow = new Date(now);
-            const currentHour = useUtc ? now.getUTCHours() : now.getHours();
-            const currentMinute = useUtc ? now.getUTCMinutes() : now.getMinutes();
+            const nowParts = getCalendarParts(now, zoneOption);
+            const startHour = ticket.preferredWindow.startHour;
             const startMinute = ticket.preferredWindow.startMinute || 0;
             const allowedDays = getAllowedDays(ticket);
-            const isPastWindowToday = currentHour > ticket.preferredWindow.startHour ||
-                (currentHour === ticket.preferredWindow.startHour && currentMinute >= startMinute);
-            // Advance until we land on an allowed day and time
-            let candidate = new Date(now);
+            const isPastWindowToday = nowParts.hour > startHour ||
+                (nowParts.hour === startHour && nowParts.minute >= startMinute);
+            const candidate = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day, 12, 0, 0, 0));
             if (isPastWindowToday) {
-                if (useUtc)
-                    candidate.setUTCDate(candidate.getUTCDate() + 1);
-                else
-                    candidate.setDate(candidate.getDate() + 1);
+                candidate.setUTCDate(candidate.getUTCDate() + 1);
             }
             if (allowedDays) {
                 for (let i = 0; i < 7; i++) {
-                    const day = useUtc ? candidate.getUTCDay() : candidate.getDay();
-                    if (allowedDays.includes(day)) {
+                    if (allowedDays.includes(candidate.getUTCDay())) {
                         break;
                     }
-                    if (useUtc)
-                        candidate.setUTCDate(candidate.getUTCDate() + 1);
-                    else
-                        candidate.setDate(candidate.getDate() + 1);
+                    candidate.setUTCDate(candidate.getUTCDate() + 1);
                 }
             }
-            if (useUtc) {
-                candidate.setUTCHours(ticket.preferredWindow.startHour, startMinute, 0, 0);
-            }
-            else {
-                candidate.setHours(ticket.preferredWindow.startHour, startMinute, 0, 0);
-            }
+            const nextDate = wallTimeToDate(candidate.getUTCFullYear(), candidate.getUTCMonth() + 1, candidate.getUTCDate(), startHour, startMinute, zoneOption);
             const modifiedTicket = {
                 ...ticket,
-                nextScheduledAt: candidate.toISOString(),
+                nextScheduledAt: nextDate.toISOString(),
                 isFloated: true
             };
             updated.push(modifiedTicket);
