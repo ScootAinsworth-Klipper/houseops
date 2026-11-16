@@ -6,6 +6,7 @@ import { createGoogleTasksClient, syncTicketToTasks } from "./sync/google.js";
 import { isQuietHours, broadcastAnnouncement } from "../daemon/announcer_client.js";
 import { parseMenuVoiceQuery, announceSchoolMenu } from "./core/school_menu.js";
 import { parseMediaVoiceQuery, dispatchMediaVoiceDownload } from "./core/media_relay.js";
+import { pollGoogleKeepDownloads } from "./core/keep_relay.js";
 import { checkSmartThingsVirtualSwitchTrigger } from "./sync/smartthings.js";
 export async function runDaemonCycle(db, options = {}) {
     const now = options.now || new Date();
@@ -263,6 +264,31 @@ export async function runDaemonCycle(db, options = {}) {
         }
         catch (err) {
             console.error("Google Tasks sync error:", err);
+        }
+    }
+    // 4. Google Keep "Downloads" List Voice Relay
+    const keepEmail = db.getSetting("google_keep_email");
+    const keepToken = db.getSetting("google_keep_master_token");
+    const keepRelayUrl = db.getSetting("media_relay_url");
+    if (keepEmail && keepToken && keepRelayUrl) {
+        try {
+            const keepListTitle = db.getSetting("google_keep_list_title") || "Downloads";
+            const keepRelayKey = db.getSetting("media_relay_key") || "";
+            const queries = await pollGoogleKeepDownloads({
+                email: keepEmail,
+                masterToken: keepToken,
+                listTitle: keepListTitle,
+            }, options.keepRunner);
+            for (const query of queries) {
+                const spokenMessage = await dispatchMediaVoiceDownload(query, {
+                    url: keepRelayUrl,
+                    apiKey: keepRelayKey,
+                });
+                await announcer(spokenMessage);
+            }
+        }
+        catch (err) {
+            console.error("Google Keep sync error:", err);
         }
     }
     return {
