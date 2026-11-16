@@ -3,37 +3,50 @@ import os from "os";
 import path from "path";
 import { execFile } from "child_process";
 
-function findCredentialsPath(): string | null {
-  const candidates = [
-    path.join(os.homedir(), ".config", "@smartthings", "cli", "credentials.json"),
+function getCandidatePaths(): string[] {
+  return [
     path.join(os.homedir(), ".local", "share", "@smartthings", "cli", "credentials.json"),
+    path.join(os.homedir(), ".config", "@smartthings", "cli", "credentials.json"),
     path.join(process.env.LOCALAPPDATA || "", "@smartthings", "cli", "Data", "credentials.json")
   ].filter(Boolean);
-
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
 }
 
 function readAccessToken(): { token: string | null; expired: boolean; credsPath: string | null } {
-  const credsPath = findCredentialsPath();
-  if (!credsPath) return { token: null, expired: true, credsPath: null };
-  try {
-    const raw = JSON.parse(fs.readFileSync(credsPath, "utf8"));
-    const entry = raw["default:api.smartthings.com"] || raw.default;
-    if (!entry || !entry.accessToken) return { token: null, expired: true, credsPath };
-    const expiresMs = entry.expires ? Date.parse(entry.expires) : 0;
-    const expired = !expiresMs || Date.now() >= expiresMs - 60_000;
-    return { token: entry.accessToken, expired, credsPath };
-  } catch {
-    return { token: null, expired: true, credsPath };
+  let best: { token: string; expiresMs: number; expired: boolean; credsPath: string } | null = null;
+  let fallbackPath: string | null = null;
+
+  for (const credsPath of getCandidatePaths()) {
+    if (!fs.existsSync(credsPath)) continue;
+    if (!fallbackPath) fallbackPath = credsPath;
+    try {
+      const raw = JSON.parse(fs.readFileSync(credsPath, "utf8"));
+      const entry = raw["default:api.smartthings.com"] || raw.default;
+      if (!entry || !entry.accessToken) continue;
+      const expiresMs = entry.expires ? Date.parse(entry.expires) : 0;
+      const expired = !expiresMs || Date.now() >= expiresMs - 60_000;
+      if (!best || expiresMs > best.expiresMs) {
+        best = { token: entry.accessToken, expiresMs, expired, credsPath };
+      }
+    } catch {
+      // Ignore malformed candidate file
+    }
   }
+
+  if (best) {
+    return { token: best.token, expired: best.expired, credsPath: best.credsPath };
+  }
+  return { token: null, expired: true, credsPath: fallbackPath };
 }
 
+let lastCliRefreshAt = 0;
+
 function refreshTokenViaCli(): Promise<string | null> {
+  if (Date.now() - lastCliRefreshAt < 15_000) {
+    return Promise.resolve(readAccessToken().token);
+  }
+  lastCliRefreshAt = Date.now();
   return new Promise((resolve) => {
-    const child = execFile("smartthings", ["locations", "--json"], { timeout: 10000 }, () => {
+    const child = execFile("smartthings", ["locations", "--json"], { timeout: 25000 }, () => {
       const updated = readAccessToken();
       resolve(updated.token);
     });
