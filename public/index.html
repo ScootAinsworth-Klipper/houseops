@@ -344,6 +344,17 @@
     </div>
   </div>
 
+  <!-- Week Load Task Actions Modal -->
+  <div class="modal-backdrop" id="taskActionModal" onclick="if(event.target===this) closeTaskActionModal()">
+    <div class="modal-card" style="max-width:440px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="font-size:16px;">📋 Task Actions</h3>
+        <button class="btn" onclick="closeTaskActionModal()" style="flex:0; padding:4px 8px;">✖</button>
+      </div>
+      <div id="taskActionModalBody"></div>
+    </div>
+  </div>
+
   <!-- Action Confirmation Modal -->
   <div class="modal-backdrop" id="confirmActionModal" onclick="if(event.target===this) closeConfirmModal()" style="z-index:1100;">
     <div class="modal-card" style="max-width:360px;">

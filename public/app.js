@@ -309,6 +309,16 @@ function renderTickets() {
     ? floatedTickets.map(renderTicketCard).join("")
     : `<div style="color:var(--text-muted); padding:30px; text-align:center;">No floated tasks. Operations on schedule! 🎯</div>`;
 
+  if (activeTaskActionId && document.getElementById("taskActionModal")?.classList.contains("open")) {
+    const activeTicket = tickets.find(t => t.id === activeTaskActionId);
+    const modalBody = document.getElementById("taskActionModalBody");
+    if (activeTicket && modalBody) {
+      modalBody.innerHTML = renderTicketCard(activeTicket);
+    } else {
+      closeTaskActionModal();
+    }
+  }
+
   renderCalendar();
 }
 
@@ -475,10 +485,13 @@ function renderCalendar() {
             ? `<button class="btn" onclick="event.stopPropagation(); reopenTicket('${t.id}', null, false, this)" style="flex:0; padding:3px 7px; font-size:10px; color:var(--yellow); border-color:rgba(234,179,8,0.4); background:var(--yellow-soft);" title="Mark Not Done / Send Back">↩️ Undo</button>`
             : "";
 
-          const clickAttr = isAdmin ? `onclick="openEditTicketModal('${t.id}')" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:var(--bg-card-alt); border:1px solid var(--border); border-radius:8px;" title="Tap to edit schedule"` : `style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:var(--bg-card-alt); border:1px solid var(--border); border-radius:8px;"`;
+          const rowStyle = "cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:var(--bg-card-alt); border:1px solid var(--border); border-radius:8px;";
+          const editBtn = isAdmin
+            ? `<button type="button" class="btn" onclick="event.stopPropagation(); openEditTicketModal('${t.id}')" style="flex:0; padding:4px 7px; font-size:11px; background:var(--bg-card); border-color:var(--border);" title="Edit schedule">✏️</button>`
+            : "";
 
           return `
-            <div ${clickAttr}>
+            <div onclick="openTicketActionModal('${t.id}')" style="${rowStyle}" title="Tap to open task actions">
               <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
                 <span style="font-size:11px; font-weight:700; color:var(--accent); background:rgba(56,189,248,0.12); padding:3px 6px; border-radius:5px; white-space:nowrap;">${timeLabel}</span>
                 <span style="font-size:13px; font-weight:600; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; ${isDoneToday ? "text-decoration:line-through; opacity:0.75;" : ""}">${escapeHtml(t.title)}</span>
@@ -487,7 +500,7 @@ function renderCalendar() {
               <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                 ${reopenInlineBtn}
                 <span style="font-size:11px; font-weight:700; color:${personColor};">${personTag}</span>
-                ${isAdmin ? `<span style="font-size:11px; opacity:0.6;">✏️</span>` : ""}
+                ${editBtn}
               </div>
             </div>
           `;
@@ -1033,6 +1046,7 @@ async function handlePhotoCaptured(input) {
     });
 
     if (!res.ok) throw new Error("Photo upload failed");
+    closeTaskActionModal();
     await loadTickets();
   } catch (e) {
     alert("Error uploading photo verification: " + e.message);
@@ -1057,6 +1071,7 @@ function quickCompleteTicket(ticketId) {
           body: JSON.stringify({ method: "Quick_Complete", actor: currentProfile })
         });
         if (!res.ok) throw new Error("Complete failed");
+        closeTaskActionModal();
         await loadTickets();
       } catch (e) {
         alert("Error completing ticket: " + e.message);
@@ -1190,6 +1205,7 @@ async function unfloatTicket(id, btn) {
       method: "POST"
     });
     if (!res.ok) throw new Error("Failed to unfloat task");
+    closeTaskActionModal();
     await loadTickets();
   } catch (e) {
     alert("Error clearing floated status: " + e.message);
@@ -1198,6 +1214,23 @@ async function unfloatTicket(id, btn) {
       btn.innerText = original;
     }
   }
+}
+
+let activeTaskActionId = null;
+
+function openTicketActionModal(ticketId) {
+  const t = tickets.find(x => x.id === ticketId);
+  if (!t) return;
+  activeTaskActionId = ticketId;
+  const body = document.getElementById("taskActionModalBody");
+  if (body) body.innerHTML = renderTicketCard(t);
+  document.getElementById("taskActionModal").classList.add("open");
+}
+
+function closeTaskActionModal() {
+  activeTaskActionId = null;
+  const modal = document.getElementById("taskActionModal");
+  if (modal) modal.classList.remove("open");
 }
 
 function openNewTicketModal() {
@@ -1225,6 +1258,7 @@ function openNewTicketModal() {
 }
 
 function openEditTicketModal(ticketId) {
+  closeTaskActionModal();
   const t = tickets.find(x => x.id === ticketId);
   if (!t) return;
 
