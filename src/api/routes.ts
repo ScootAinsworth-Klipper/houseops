@@ -62,6 +62,15 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
     return reply.send({ success: true, id: req.params.id });
   });
 
+  // Clear Floated flag so a missed task returns to normal Active status without marking it Done
+  app.post("/api/tickets/:id/unfloat", async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const ticket = db.getTicket(req.params.id);
+    if (!ticket) return reply.status(404).send({ error: "Ticket not found" });
+    ticket.isFloated = false;
+    db.saveTicket(ticket);
+    return reply.send({ success: true, ticket });
+  });
+
   // Instant Task Nudge Broadcast
   app.post("/api/tickets/:id/nudge", async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const ticket = db.getTicket(req.params.id);

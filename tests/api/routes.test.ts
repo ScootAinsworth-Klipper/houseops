@@ -134,4 +134,47 @@ describe("HouseOps REST API & Verification Endpoints", () => {
     expect(voiceDoneData.audit.method).toBe("Voice_Closed");
     expect(voiceDoneData.message).toContain("Awesome!");
   });
+
+  it("clears isFloated flag via POST /api/tickets/:id/unfloat without marking Done", async () => {
+    const sched = "2026-11-16T23:30:00.000Z";
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/tickets",
+      payload: {
+        id: "TICK-UNFLOAT-1",
+        title: "Clean Living Room",
+        category: "General",
+        priority: "P2-Normal",
+        recurrence: { type: "Daily", baseOnCompletion: true },
+        preferredWindow: { startHour: 17, startMinute: 30, durationMinutes: 45 },
+        nextScheduledAt: "2026-11-15T23:30:00.000Z"
+      }
+    });
+    expect(createRes.statusCode).toBe(201);
+
+    // Float it forward via /api/scheduler/float
+    const floatRes = await app.inject({ method: "POST", url: "/api/scheduler/float" });
+    expect(floatRes.statusCode).toBe(200);
+    const listAfterFloat = JSON.parse((await app.inject({ method: "GET", url: "/api/tickets" })).body);
+    const floatedTicket = listAfterFloat.find((t: any) => t.id === "TICK-UNFLOAT-1");
+    expect(floatedTicket.isFloated).toBe(true);
+
+    const unfloatRes = await app.inject({
+      method: "POST",
+      url: "/api/tickets/TICK-UNFLOAT-1/unfloat"
+    });
+    expect(unfloatRes.statusCode).toBe(200);
+    const body = JSON.parse(unfloatRes.body);
+    expect(body.success).toBe(true);
+    expect(body.ticket.isFloated).toBe(false);
+    expect(body.ticket.currentStatus).toBe("Pending");
+    expect(body.ticket.nextScheduledAt).toBe(floatedTicket.nextScheduledAt);
+
+    const missingRes = await app.inject({
+      method: "POST",
+      url: "/api/tickets/TICK-DOES-NOT-EXIST/unfloat"
+    });
+    expect(missingRes.statusCode).toBe(404);
+    expect(sched).toBeTruthy();
+  });
 });

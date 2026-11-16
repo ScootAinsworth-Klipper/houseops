@@ -244,7 +244,7 @@ async function loadAuditLog() {
 
 function updateCounts() {
   const visible = tickets.filter(matchesProfileFilter);
-  const active = visible.filter(t => t.recurrence.type === "OnDemand" || (t.currentStatus !== "Verified" && !t.isFloated)).length;
+  const active = visible.filter(t => t.recurrence.type === "OnDemand" || t.currentStatus !== "Verified").length;
   const floated = visible.filter(t => t.recurrence.type !== "OnDemand" && t.currentStatus !== "Verified" && t.isFloated).length;
   document.getElementById("countActive").innerText = active;
   document.getElementById("countFloated").innerText = floated;
@@ -294,7 +294,7 @@ function renderTickets() {
   const floatedGrid = document.getElementById("viewFloated");
 
   const visible = tickets.filter(matchesProfileFilter);
-  const activeTickets = visible.filter(t => t.recurrence.type === "OnDemand" || (t.currentStatus !== "Verified" && !t.isFloated));
+  const activeTickets = visible.filter(t => t.recurrence.type === "OnDemand" || t.currentStatus !== "Verified");
   const floatedTickets = visible.filter(t => t.recurrence.type !== "OnDemand" && t.currentStatus !== "Verified" && t.isFloated);
 
   const menuBannerHtml = (currentProfile === "Sawyer" || currentProfile === "Dad" || currentProfile === "Family")
@@ -594,6 +594,9 @@ function renderTicketCard(t) {
   const nudgeBtnHtml = isAdmin
     ? `<button class="btn btn-nudge" onclick="nudgeTicket('${t.id}', this)" title="Broadcast voice reminder right now">📢 Nudge</button>`
     : "";
+  const unfloatBtnHtml = isAdmin && t.isFloated
+    ? `<button class="btn" onclick="unfloatTicket('${t.id}', this)" style="flex:0; padding:8px 10px; background:var(--yellow-soft); color:var(--yellow); border-color:rgba(234,179,8,0.35);" title="Clear Floated flag and return to normal Active status">↩ Unfloat</button>`
+    : "";
   const editBtnHtml = isAdmin
     ? `<button class="btn" onclick="openEditTicketModal('${t.id}')" style="flex:0; padding:8px 10px; background:var(--bg-card-alt); border-color:var(--border);" title="Edit Task">✏️</button>`
     : "";
@@ -629,6 +632,7 @@ function renderTicketCard(t) {
              ${doneBtnHtml}
              ${nudgeBtnHtml}`
         }
+        ${unfloatBtnHtml}
         ${editBtnHtml}
       </div>
     </div>
@@ -1172,6 +1176,27 @@ function switchTab(tab) {
   if (activeBtn) {
     activeBtn.classList.add("active");
     try { activeBtn.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); } catch (_) {}
+  }
+}
+
+async function unfloatTicket(id, btn) {
+  const original = btn ? btn.innerText : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = "⏳";
+  }
+  try {
+    const res = await fetch(`/api/tickets/${encodeURIComponent(id)}/unfloat`, {
+      method: "POST"
+    });
+    if (!res.ok) throw new Error("Failed to unfloat task");
+    await loadTickets();
+  } catch (e) {
+    alert("Error clearing floated status: " + e.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = original;
+    }
   }
 }
 
