@@ -28,6 +28,7 @@ Write-Host "Step 3: Compiling Java sources..."
 $javaFiles = @(
     "$appDir\build\gen\com\scoot\houseops\R.java",
     "$appDir\src\com\houseops\app\PhotoProvider.java",
+    "$appDir\src\com\houseops\app\ServerConfig.java",
     "$appDir\src\com\houseops\app\NotificationService.java",
     "$appDir\src\com\houseops\app\MainActivity.java"
 )

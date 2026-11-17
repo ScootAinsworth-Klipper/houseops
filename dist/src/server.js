@@ -6,20 +6,23 @@ import path from "path";
 import fs from "fs";
 import { initDatabase } from "./db/database.js";
 import { registerRoutes } from "./api/routes.js";
+import { registerAuth } from "./auth.js";
 import { startDaemon } from "./daemon.js";
 export async function buildServer(options = {}) {
-    const app = Fastify({ logger: false });
+    const app = Fastify({ logger: false, trustProxy: true });
     await app.register(cors, { origin: true });
     await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } }); // 25MB max
     const dbPath = options.dbPath || path.resolve(process.cwd(), "data/houseops.db");
     const photoDir = path.resolve(process.cwd(), options.photoDir || process.env.PHOTO_DIR || "photos");
     const staticDir = path.resolve(process.cwd(), options.staticDir || "public");
+    const accessKey = options.accessKey ?? process.env.HOUSEOPS_ACCESS_KEY ?? "";
     if (dbPath !== ":memory:") {
         fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     }
     fs.mkdirSync(photoDir, { recursive: true });
     fs.mkdirSync(staticDir, { recursive: true });
     const db = initDatabase(dbPath);
+    registerAuth(app, accessKey);
     // Serve static UI assets without stale caching on mobile WebViews
     await app.register(fastifyStatic, {
         root: staticDir,

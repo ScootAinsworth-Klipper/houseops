@@ -93,10 +93,22 @@ public class NotificationService extends Service {
     }
 
     private void pollNotifications() {
+        String primaryUrl = ServerConfig.getFastBaseUrl(this);
+        if (pollNotificationsFrom(primaryUrl)) {
+            return;
+        }
+        String resolvedUrl = ServerConfig.resolveServerUrl(this);
+        if (!resolvedUrl.equals(primaryUrl)) {
+            pollNotificationsFrom(resolvedUrl);
+        }
+    }
+
+    private boolean pollNotificationsFrom(String serverUrl) {
+        if (serverUrl == null || serverUrl.isEmpty()) return false;
         HttpURLConnection conn = null;
         try {
-            SharedPreferences prefs = getSharedPreferences("HouseOpsPrefs", Context.MODE_PRIVATE);
-            String serverUrl = prefs.getString("server_url", "http://192.168.1.82:8088");
+            SharedPreferences prefs = ServerConfig.prefs(this);
+            String accessKey = ServerConfig.getAccessKey(this);
             String profile = prefs.getString("user_profile", "Dad");
             long lastSeenTs = prefs.getLong("last_notif_ts", 0L);
 
@@ -104,6 +116,9 @@ public class NotificationService extends Service {
             URL url = new URL(endpoint);
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
+            if (!accessKey.isEmpty()) {
+                conn.setRequestProperty("X-HouseOps-Key", accessKey);
+            }
             conn.setConnectTimeout(4500);
             conn.setReadTimeout(4500);
 
@@ -122,7 +137,7 @@ public class NotificationService extends Service {
                 // First run or profile switch: baseline to serverTime so we don't replay old history
                 if (lastSeenTs == 0L) {
                     prefs.edit().putLong("last_notif_ts", serverTime).apply();
-                    return;
+                    return true;
                 }
 
                 JSONArray items = root.optJSONArray("notifications");
@@ -144,8 +159,11 @@ public class NotificationService extends Service {
                     }
                     prefs.edit().putLong("last_notif_ts", maxTs).apply();
                 }
+                return true;
             }
+            return false;
         } catch (Exception ignored) {
+            return false;
         } finally {
             if (conn != null) conn.disconnect();
         }

@@ -21,6 +21,7 @@ import android.os.Environment;
 import android.os.PowerManager;
 import android.provider.MediaStore;
 import android.provider.Settings;
+import android.text.InputType;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -50,11 +51,11 @@ import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MainActivity extends Activity {
-    private static final String PREFS_NAME = "HouseOpsPrefs";
-    private static final String KEY_SERVER_URL = "server_url";
-    private static final String DEFAULT_URL = "http://192.168.1.82:8088";
+    private static final String PREFS_NAME = ServerConfig.PREFS_NAME;
     private static final String GITHUB_REPO_API = "https://api.github.com/repos/ScootAinsworth-Klipper/houseops/releases/latest";
     private static final int FILECHOOSER_RESULTCODE = 1001;
     private static final int REQUEST_CAMERA_PERMISSION = 1002;
@@ -106,8 +107,7 @@ public class MainActivity extends Activity {
             window.setNavigationBarColor(Color.BLACK);
         }
 
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        currentServerUrl = prefs.getString(KEY_SERVER_URL, DEFAULT_URL);
+        currentServerUrl = ServerConfig.getFastBaseUrl(this);
 
         rootLayout = new FrameLayout(this);
         rootLayout.setBackgroundColor(Color.BLACK);
@@ -152,6 +152,14 @@ public class MainActivity extends Activity {
                     startActivity(intent);
                 }
             } catch (Exception ignored) {}
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (errorView != null && errorView.getVisibility() == View.VISIBLE) {
+            loadHouseOps();
         }
     }
 
@@ -308,17 +316,38 @@ public class MainActivity extends Activity {
         loadHouseOps(null);
     }
 
-    private void loadHouseOps(Intent intent) {
+    private void loadHouseOps(final Intent intent) {
         errorView.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
-        String targetUrl = currentServerUrl;
-        if (intent != null && intent.hasExtra("tab")) {
-            String tab = intent.getStringExtra("tab");
-            if (tab != null && !tab.isEmpty()) {
-                targetUrl = currentServerUrl + "/?tab=" + Uri.encode(tab);
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String resolvedUrl = ServerConfig.resolveServerUrl(MainActivity.this);
+                final String accessKey = ServerConfig.getAccessKey(MainActivity.this);
+                String targetUrl = resolvedUrl;
+                if (intent != null && intent.hasExtra("tab")) {
+                    String tab = intent.getStringExtra("tab");
+                    if (tab != null && !tab.isEmpty()) {
+                        targetUrl = resolvedUrl + "/?tab=" + Uri.encode(tab);
+                    }
+                }
+                final String finalUrl = targetUrl;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        currentServerUrl = resolvedUrl;
+                        if (!accessKey.isEmpty()) {
+                            Map<String, String> headers = new HashMap<String, String>();
+                            headers.put("X-HouseOps-Key", accessKey);
+                            webView.loadUrl(finalUrl, headers);
+                        } else {
+                            webView.loadUrl(finalUrl);
+                        }
+                    }
+                });
             }
-        }
-        webView.loadUrl(targetUrl);
+        }).start();
     }
 
     private void showError(String msg) {
@@ -335,14 +364,41 @@ public class MainActivity extends Activity {
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(50, 20, 50, 10);
 
-        TextView lbl = new TextView(this);
-        lbl.setText("Server URL (Pi IP or Hostname):");
-        lbl.setTextColor(Color.GRAY);
-        layout.addView(lbl);
+        TextView lblLocal = new TextView(this);
+        lblLocal.setText("Local Server URL (Home Wi-Fi):");
+        lblLocal.setTextColor(Color.GRAY);
+        layout.addView(lblLocal);
 
-        final EditText input = new EditText(this);
-        input.setText(currentServerUrl);
-        layout.addView(input);
+        final EditText inputLocal = new EditText(this);
+        inputLocal.setText(ServerConfig.getLocalUrl(this));
+        inputLocal.setHint(ServerConfig.DEFAULT_LOCAL_URL);
+        inputLocal.setSingleLine(true);
+        layout.addView(inputLocal);
+
+        TextView lblRemote = new TextView(this);
+        lblRemote.setText("Remote Server URL (Away / DDNS):");
+        lblRemote.setTextColor(Color.GRAY);
+        lblRemote.setPadding(0, 16, 0, 0);
+        layout.addView(lblRemote);
+
+        final EditText inputRemote = new EditText(this);
+        inputRemote.setText(ServerConfig.getRemoteUrl(this));
+        inputRemote.setHint(ServerConfig.DEFAULT_REMOTE_URL);
+        inputRemote.setSingleLine(true);
+        layout.addView(inputRemote);
+
+        TextView lblKey = new TextView(this);
+        lblKey.setText("Household Access Key:");
+        lblKey.setTextColor(Color.GRAY);
+        lblKey.setPadding(0, 16, 0, 0);
+        layout.addView(lblKey);
+
+        final EditText inputKey = new EditText(this);
+        inputKey.setText(ServerConfig.getAccessKey(this));
+        inputKey.setHint("Required when server auth is enabled");
+        inputKey.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        inputKey.setSingleLine(true);
+        layout.addView(inputKey);
 
         // Action Buttons inside Settings
         Button btnTestVoice = new Button(this);
@@ -382,15 +438,18 @@ public class MainActivity extends Activity {
         builder.setPositiveButton("Save & Connect", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
-                String newUrl = input.getText().toString().trim();
-                if (!newUrl.startsWith("http://") && !newUrl.startsWith("https://")) {
-                    newUrl = "http://" + newUrl;
-                }
-                currentServerUrl = newUrl;
-                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                String localUrl = ServerConfig.normalizeUrl(inputLocal.getText().toString(), "http://");
+                String remoteUrl = ServerConfig.normalizeUrl(inputRemote.getText().toString(), "https://");
+                String accessKey = inputKey.getText().toString().trim();
+
+                ServerConfig.prefs(MainActivity.this)
                         .edit()
-                        .putString(KEY_SERVER_URL, currentServerUrl)
+                        .putString(ServerConfig.KEY_LOCAL_URL, localUrl)
+                        .putString(ServerConfig.KEY_REMOTE_URL, remoteUrl)
+                        .putString(ServerConfig.KEY_ACCESS_KEY, accessKey)
+                        .remove(ServerConfig.KEY_ACTIVE_URL)
                         .apply();
+                startNotificationService();
                 loadHouseOps();
             }
         });
@@ -405,10 +464,15 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 try {
-                    URL url = new URL(currentServerUrl + "/api/announce");
+                    String baseUrl = ServerConfig.resolveServerUrl(MainActivity.this);
+                    String accessKey = ServerConfig.getAccessKey(MainActivity.this);
+                    URL url = new URL(baseUrl + "/api/announce");
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                     conn.setRequestMethod("POST");
                     conn.setRequestProperty("Content-Type", "application/json");
+                    if (!accessKey.isEmpty()) {
+                        conn.setRequestProperty("X-HouseOps-Key", accessKey);
+                    }
                     conn.setDoOutput(true);
                     conn.setConnectTimeout(5000);
                     conn.setReadTimeout(5000);
@@ -445,6 +509,9 @@ public class MainActivity extends Activity {
 
     // --- GitHub In-App Updater ---
     private void checkForUpdates(final boolean isManual) {
+        if (isManual) {
+            Toast.makeText(this, "🔍 Checking GitHub for updates...", Toast.LENGTH_SHORT).show();
+        }
         new Thread(new Runnable() {
             @Override
             public void run() {
