@@ -124,7 +124,9 @@ let quietHoursState = {
   forceMute: false,
   startTime: "22:00",
   endTime: "06:00",
-  isCurrentlyQuiet: false
+  snoozedUntil: null,
+  isCurrentlyQuiet: false,
+  isSnoozed: false
 };
 
 function formatShortTime(hhmm) {
@@ -136,6 +138,14 @@ function formatShortTime(hhmm) {
   return m === 0 ? `${h12}${suffix}` : `${h12}:${String(m).padStart(2, "0")}${suffix}`;
 }
 
+function formatSnoozeUntil(isoStr) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return "";
+  const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return formatShortTime(hhmm);
+}
+
 function updateQuietHoursChip() {
   const chip = document.getElementById("chipQuiet");
   const textEl = document.getElementById("chipQuietText");
@@ -144,6 +154,9 @@ function updateQuietHoursChip() {
   if (quietHoursState.forceMute) {
     chip.classList.add("active");
     textEl.innerText = "Quiet: Muted";
+  } else if (quietHoursState.isSnoozed && quietHoursState.snoozedUntil) {
+    chip.classList.add("active");
+    textEl.innerText = `Snoozed til ${formatSnoozeUntil(quietHoursState.snoozedUntil)}`;
   } else if (quietHoursState.isCurrentlyQuiet) {
     chip.classList.add("active");
     textEl.innerText = "Quiet: ON";
@@ -178,7 +191,12 @@ function openQuietHoursModal() {
   document.getElementById("inpQuietEnd").value = quietHoursState.endTime || "06:00";
 
   const banner = document.getElementById("quietModalStatusBanner");
-  if (quietHoursState.isCurrentlyQuiet) {
+  if (quietHoursState.isSnoozed && quietHoursState.snoozedUntil && !quietHoursState.forceMute) {
+    banner.innerText = `😴 Snoozed until ${formatSnoozeUntil(quietHoursState.snoozedUntil)} (manual nudges & school menu still work).`;
+    banner.style.borderColor = "var(--purple)";
+    banner.style.color = "#f5d0fe";
+    banner.style.background = "rgba(168, 85, 247, 0.15)";
+  } else if (quietHoursState.isCurrentlyQuiet) {
     banner.innerText = "🔇 Speakers are currently MUTED (Quiet Hours active).";
     banner.style.borderColor = "var(--purple)";
     banner.style.color = "#f5d0fe";
@@ -190,11 +208,62 @@ function openQuietHoursModal() {
     banner.style.background = "rgba(34, 197, 94, 0.12)";
   }
 
+  const resumeBtn = document.getElementById("btnResumeBroadcasts");
+  if (resumeBtn) {
+    resumeBtn.style.display = (quietHoursState.isSnoozed || quietHoursState.forceMute) ? "block" : "none";
+  }
+
   document.getElementById("quietHoursModal").classList.add("open");
 }
 
 function closeQuietHoursModal() {
   document.getElementById("quietHoursModal").classList.remove("open");
+}
+
+async function snoozeBroadcasts(minutesOrTomorrow) {
+  let until;
+  if (minutesOrTomorrow === "tomorrow") {
+    const [hStr, mStr] = (quietHoursState.endTime || "06:00").split(":");
+    const h = parseInt(hStr, 10);
+    const m = parseInt(mStr, 10);
+    until = new Date();
+    until.setHours(isNaN(h) ? 6 : h, isNaN(m) ? 0 : m, 0, 0);
+    if (until.getTime() <= Date.now()) {
+      until.setDate(until.getDate() + 1);
+    }
+  } else {
+    until = new Date(Date.now() + Number(minutesOrTomorrow) * 60 * 1000);
+  }
+
+  try {
+    const res = await fetch("/api/settings/quiet-hours", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ snoozedUntil: until.toISOString(), forceMute: false })
+    });
+    if (!res.ok) throw new Error("Failed to snooze broadcasts");
+    quietHoursState = await res.json();
+    updateQuietHoursChip();
+    closeQuietHoursModal();
+  } catch (e) {
+    alert("Error snoozing broadcasts: " + e.message);
+  }
+}
+
+async function resumeBroadcasts() {
+  try {
+    const res = await fetch("/api/settings/quiet-hours", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ snoozedUntil: null, forceMute: false })
+    });
+    if (!res.ok) throw new Error("Failed to resume broadcasts");
+    quietHoursState = await res.json();
+    updateQuietHoursChip();
+    closeQuietHoursModal();
+  } catch (e) {
+    alert("Error resuming broadcasts: " + e.message);
+  }
 }
 
 async function saveQuietHours() {

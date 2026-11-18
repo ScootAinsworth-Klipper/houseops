@@ -4,7 +4,8 @@ let activeQuietConfig = {
     enabled: true,
     forceMute: false,
     startTime: "22:00",
-    endTime: "06:00"
+    endTime: "06:00",
+    snoozedUntil: null
 };
 export function setQuietHoursConfig(cfg) {
     if (cfg.enabled !== undefined)
@@ -15,10 +16,21 @@ export function setQuietHoursConfig(cfg) {
         activeQuietConfig.startTime = cfg.startTime;
     if (cfg.endTime)
         activeQuietConfig.endTime = cfg.endTime;
+    if (cfg.snoozedUntil !== undefined) {
+        activeQuietConfig.snoozedUntil = cfg.snoozedUntil ? cfg.snoozedUntil : null;
+    }
     return { ...activeQuietConfig };
 }
 export function getQuietHoursConfig() {
     return { ...activeQuietConfig };
+}
+export function isSnoozed(now = new Date()) {
+    if (!activeQuietConfig.snoozedUntil)
+        return false;
+    const untilMs = new Date(activeQuietConfig.snoozedUntil).getTime();
+    if (isNaN(untilMs))
+        return false;
+    return now.getTime() < untilMs;
 }
 function parseTimeFraction(hhmm, fallback) {
     const parts = (hhmm || "").split(":").map(Number);
@@ -39,7 +51,7 @@ export function isQuietHours(now = new Date(), startHour, endHour) {
         eHour = endHour ?? 6.0;
     }
     else {
-        if (activeQuietConfig.forceMute)
+        if (activeQuietConfig.forceMute || isSnoozed(now))
             return true;
         if (!activeQuietConfig.enabled)
             return false;

@@ -1,5 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { isQuietHours, buildAnnouncementText } from "../../daemon/announcer_client";
+import { describe, it, expect, afterEach } from "vitest";
+import {
+  isQuietHours,
+  isSnoozed,
+  setQuietHoursConfig,
+  buildAnnouncementText
+} from "../../daemon/announcer_client";
 import { HouseTicket } from "../../src/core/types";
 
 describe("Speaker Announcer Rules & Quiet Hours", () => {
@@ -47,5 +52,41 @@ describe("Speaker Announcer Rules & Quiet Hours", () => {
     expect(text).toContain("Good morning");
     expect(text).toContain("2 household tasks");
     expect(text).toContain("Kitchen Trash pickup");
+  });
+
+  describe("Broadcast Snooze & Resume", () => {
+    afterEach(() => {
+      setQuietHoursConfig({
+        enabled: true,
+        forceMute: false,
+        startTime: "22:00",
+        endTime: "06:00",
+        snoozedUntil: null
+      });
+    });
+
+    it("mutes automated broadcasts while snoozedUntil is in the future and auto-resumes after expiry", () => {
+      const now = new Date("2026-11-18T19:00:00");
+      const until = new Date("2026-11-18T21:00:00");
+      setQuietHoursConfig({ enabled: false, forceMute: false, snoozedUntil: until.toISOString() });
+
+      expect(isSnoozed(now)).toBe(true);
+      expect(isQuietHours(now)).toBe(true);
+
+      const afterExpiry = new Date("2026-11-18T21:00:01");
+      expect(isSnoozed(afterExpiry)).toBe(false);
+      expect(isQuietHours(afterExpiry)).toBe(false);
+    });
+
+    it("resumes immediately when snoozedUntil is cleared", () => {
+      const now = new Date("2026-11-18T19:00:00");
+      const until = new Date("2026-11-18T23:00:00");
+      setQuietHoursConfig({ enabled: false, forceMute: false, snoozedUntil: until.toISOString() });
+      expect(isSnoozed(now)).toBe(true);
+
+      setQuietHoursConfig({ snoozedUntil: null });
+      expect(isSnoozed(now)).toBe(false);
+      expect(isQuietHours(now)).toBe(false);
+    });
   });
 });

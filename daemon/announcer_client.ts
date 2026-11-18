@@ -7,13 +7,15 @@ export interface QuietHoursConfig {
   forceMute: boolean;
   startTime: string; // "HH:MM", e.g. "22:00"
   endTime: string;   // "HH:MM", e.g. "06:00"
+  snoozedUntil?: string | null; // ISO timestamp until automated broadcasts resume
 }
 
 let activeQuietConfig: QuietHoursConfig = {
   enabled: true,
   forceMute: false,
   startTime: "22:00",
-  endTime: "06:00"
+  endTime: "06:00",
+  snoozedUntil: null
 };
 
 export function setQuietHoursConfig(cfg: Partial<QuietHoursConfig>): QuietHoursConfig {
@@ -21,11 +23,21 @@ export function setQuietHoursConfig(cfg: Partial<QuietHoursConfig>): QuietHoursC
   if (cfg.forceMute !== undefined) activeQuietConfig.forceMute = Boolean(cfg.forceMute);
   if (cfg.startTime) activeQuietConfig.startTime = cfg.startTime;
   if (cfg.endTime) activeQuietConfig.endTime = cfg.endTime;
+  if (cfg.snoozedUntil !== undefined) {
+    activeQuietConfig.snoozedUntil = cfg.snoozedUntil ? cfg.snoozedUntil : null;
+  }
   return { ...activeQuietConfig };
 }
 
 export function getQuietHoursConfig(): QuietHoursConfig {
   return { ...activeQuietConfig };
+}
+
+export function isSnoozed(now: Date = new Date()): boolean {
+  if (!activeQuietConfig.snoozedUntil) return false;
+  const untilMs = new Date(activeQuietConfig.snoozedUntil).getTime();
+  if (isNaN(untilMs)) return false;
+  return now.getTime() < untilMs;
 }
 
 function parseTimeFraction(hhmm: string, fallback: number): number {
@@ -48,7 +60,7 @@ export function isQuietHours(now: Date = new Date(), startHour?: number, endHour
     sHour = startHour ?? 22.0;
     eHour = endHour ?? 6.0;
   } else {
-    if (activeQuietConfig.forceMute) return true;
+    if (activeQuietConfig.forceMute || isSnoozed(now)) return true;
     if (!activeQuietConfig.enabled) return false;
     sHour = parseTimeFraction(activeQuietConfig.startTime, 22.0);
     eHour = parseTimeFraction(activeQuietConfig.endTime, 6.0);

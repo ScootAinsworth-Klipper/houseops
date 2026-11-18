@@ -311,9 +311,22 @@
       </div>
 
       <div class="form-group">
-        <label>Instant Override</label>
+        <label>Snooze Automated Broadcasts</label>
+        <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px;">
+          <button type="button" class="btn" onclick="snoozeBroadcasts(60)" style="padding:8px 10px; font-size:12px;">😴 1 Hour</button>
+          <button type="button" class="btn" onclick="snoozeBroadcasts(120)" style="padding:8px 10px; font-size:12px;">😴 2 Hours</button>
+          <button type="button" class="btn" onclick="snoozeBroadcasts(240)" style="padding:8px 10px; font-size:12px;">😴 4 Hours</button>
+          <button type="button" class="btn" onclick="snoozeBroadcasts('tomorrow')" style="padding:8px 10px; font-size:12px;">🌅 Until Tomorrow</button>
+        </div>
+        <button type="button" class="btn btn-primary" id="btnResumeBroadcasts" onclick="resumeBroadcasts()" style="display:none; width:100%; margin-top:8px; padding:9px 12px; font-size:13px; background:var(--green); border-color:var(--green); color:#052e16; font-weight:700;">
+          🔊 Resume Broadcasts Now
+        </button>
+      </div>
+
+      <div class="form-group">
+        <label>Indefinite Override</label>
         <button type="button" class="speaker-chip" id="chipForceMute" onclick="this.classList.toggle('active')" style="width:100%; justify-content:center; padding:10px 12px; font-size:13px;">
-          🔇 Mute All Speakers Right Now (Do Not Disturb)
+          🔇 Mute Indefinitely Until Turned Off
         </button>
       </div>
 

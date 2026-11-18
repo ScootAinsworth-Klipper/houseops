@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { HouseOpsDatabase } from "../db/database.js";
 import { calculateNextOccurrence, evaluateFloatingTickets, HOUSEHOLD_TIMEZONE } from "../core/scheduler.js";
 import { HouseTicket, CompletionRecord, CompletionMethod } from "../core/types.js";
-import { broadcastAnnouncement, getQuietHoursConfig, setQuietHoursConfig, isQuietHours, QuietHoursConfig } from "../../daemon/announcer_client.js";
+import { broadcastAnnouncement, getQuietHoursConfig, setQuietHoursConfig, isQuietHours, isSnoozed, QuietHoursConfig } from "../../daemon/announcer_client.js";
 import { createGoogleTasksClient } from "../sync/google.js";
 import { runDaemonCycle } from "../daemon.js";
 import { ensureInitialSchoolMenus, resolveActiveSchoolMenu, parseMenuVoiceQuery, announceSchoolMenu } from "../core/school_menu.js";
@@ -92,7 +92,7 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
 
     db.pushNotification(ticket.assignee || "Family", `📢 Alert: ${ticket.title}`, message, "active");
 
-    const ok = await broadcastAnnouncement(message, speakers);
+    const ok = await broadcastAnnouncement(message, speakers, undefined, true);
     return reply.send({ success: ok, message, speakers });
   });
 
@@ -337,7 +337,7 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
         const msg = `Attention ${person}: Dad checked ${ticket.title} and sent it back.${reasonText} Please make sure it is completely finished.`;
         const speakers = ticket.broadcast?.speakers?.length ? ticket.broadcast.speakers : ["All Rooms"];
         console.log(`[Reopen] Broadcasting Send-Back to ${JSON.stringify(speakers)}: "${msg}"`);
-        broadcastAnnouncement(msg, speakers).catch(err => console.error("[Reopen] Broadcast error:", err));
+        broadcastAnnouncement(msg, speakers, undefined, true).catch(err => console.error("[Reopen] Broadcast error:", err));
         announced = true;
       }
 
@@ -489,32 +489,37 @@ export function registerRoutes(app: FastifyInstance, db: HouseOpsDatabase, photo
   app.post("/api/announce", async (req: FastifyRequest<{ Body: { message?: string; speaker?: string } }>, reply) => {
     const msg = req.body?.message || "Hello! HouseOps voice broadcast is operational across all rooms.";
     const speaker = req.body?.speaker || "All Rooms";
-    const ok = await broadcastAnnouncement(msg, speaker);
+    const ok = await broadcastAnnouncement(msg, speaker, undefined, true);
     return reply.send({ success: ok, message: msg, speaker });
   });
 
   // Get Quiet Hours Settings & Status
   app.get("/api/settings/quiet-hours", async (_req, reply) => {
+    const now = new Date();
     const cfg = getQuietHoursConfig();
     return reply.send({
       ...cfg,
-      isCurrentlyQuiet: isQuietHours(new Date())
+      isCurrentlyQuiet: isQuietHours(now),
+      isSnoozed: isSnoozed(now)
     });
   });
 
   // Update Quiet Hours Settings
   app.post("/api/settings/quiet-hours", async (req: FastifyRequest<{ Body: Partial<QuietHoursConfig> }>, reply) => {
     const body = req.body || {};
+    const now = new Date();
     const updated = setQuietHoursConfig({
       enabled: body.enabled !== undefined ? Boolean(body.enabled) : undefined,
       forceMute: body.forceMute !== undefined ? Boolean(body.forceMute) : undefined,
       startTime: body.startTime,
-      endTime: body.endTime
+      endTime: body.endTime,
+      snoozedUntil: body.snoozedUntil !== undefined ? body.snoozedUntil : undefined
     });
     db.setSetting("quiet_hours_config", JSON.stringify(updated));
     return reply.send({
       ...updated,
-      isCurrentlyQuiet: isQuietHours(new Date())
+      isCurrentlyQuiet: isQuietHours(now),
+      isSnoozed: isSnoozed(now)
     });
   });
 

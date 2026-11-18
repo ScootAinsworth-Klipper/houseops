@@ -177,4 +177,36 @@ describe("HouseOps REST API & Verification Endpoints", () => {
     expect(missingRes.statusCode).toBe(404);
     expect(sched).toBeTruthy();
   });
+
+  it("persists snoozedUntil and supports immediate resume via /api/settings/quiet-hours", async () => {
+    const futureIso = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
+    const snoozeRes = await app.inject({
+      method: "POST",
+      url: "/api/settings/quiet-hours",
+      payload: { enabled: false, forceMute: false, snoozedUntil: futureIso }
+    });
+    expect(snoozeRes.statusCode).toBe(200);
+    const snoozeBody = JSON.parse(snoozeRes.body);
+    expect(snoozeBody.snoozedUntil).toBe(futureIso);
+    expect(snoozeBody.isSnoozed).toBe(true);
+    expect(snoozeBody.isCurrentlyQuiet).toBe(true);
+
+    const getRes = await app.inject({ method: "GET", url: "/api/settings/quiet-hours" });
+    expect(getRes.statusCode).toBe(200);
+    const getBody = JSON.parse(getRes.body);
+    expect(getBody.isSnoozed).toBe(true);
+    expect(getBody.snoozedUntil).toBe(futureIso);
+
+    const resumeRes = await app.inject({
+      method: "POST",
+      url: "/api/settings/quiet-hours",
+      payload: { snoozedUntil: null, forceMute: false }
+    });
+    expect(resumeRes.statusCode).toBe(200);
+    const resumeBody = JSON.parse(resumeRes.body);
+    expect(resumeBody.snoozedUntil).toBeNull();
+    expect(resumeBody.isSnoozed).toBe(false);
+    expect(resumeBody.isCurrentlyQuiet).toBe(false);
+  });
 });
